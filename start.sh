@@ -12,6 +12,5 @@ echo "Starting ParcelPilot Streamlit frontend..."
 
 exec streamlit run streamlit_app.py \
     --server.address 0.0.0.0 \
-    --server.port 7860 \
+    --server.port ${PORT:-7860} \
     --server.headless true
-    
