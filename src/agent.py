@@ -28,7 +28,8 @@ def _get_shared_retriever():
 class ParcelPilotAgent:
 
     def __init__(self):
-        # Load embedding/vector/reranking models only when a RAG query needs them.\n        self.retriever = None
+        # Load embedding/vector/reranking models only when a RAG query needs them.
+        self.retriever = None
         self.pending_escalation = None
 
     @traced(name="parcelpilot.agent_process")
