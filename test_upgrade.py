@@ -41,8 +41,6 @@ def test_legacy_agent_instance_lazily_initializes_retriever():
     from unittest.mock import patch
     from src.agent import ParcelPilotAgent, _get_shared_retriever
 
-    _get_shared_retriever.cache_clear()
-
     class DummyRetriever:
         def retrieve(self, query, account_id=None):
             return [{"text": "Cancellation policy context"}]
@@ -57,14 +55,13 @@ def test_legacy_agent_instance_lazily_initializes_retriever():
     agent = ParcelPilotAgent.__new__(ParcelPilotAgent)
     agent.pending_escalation = None
 
-    with patch("src.agent.Retriever", return_value=DummyRetriever()) as factory, \
+    with patch("src.agent._get_shared_retriever", return_value=DummyRetriever()) as factory, \
          patch("src.agent.generate_response", return_value={"answer": "Policy answer"}):
         result = agent.process("What is the cancellation policy?")
 
     factory.assert_called_once()
     assert result == {"answer": "Policy answer"}
     assert isinstance(agent.retriever, DummyRetriever)
-    _get_shared_retriever.cache_clear()
 
 
 def test_cancellation_response_accepts_can_cancel_field():
