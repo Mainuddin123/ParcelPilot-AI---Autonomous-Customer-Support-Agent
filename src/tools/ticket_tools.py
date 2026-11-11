@@ -13,6 +13,12 @@ def lookup_ticket(
     belongs to the provided account.
     """
 
+    if not account_id:
+        return {
+            "found": False,
+            "reason": "An Account ID is required to verify ticket ownership."
+        }
+
     ticket = data.get_ticket(ticket_id)
 
     if ticket is None:
