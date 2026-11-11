@@ -1,11 +1,4 @@
-"""Optional LangSmith tracing helpers.
-
-Tracing remains disabled unless LANGSMITH_TRACING=true and a valid
-LANGSMITH_API_KEY is configured in the environment.
-"""
-from functools import wraps
-import os
-
+"""Optional LangSmith tracing helpers."""
 try:
     from langsmith import traceable
 except ImportError:
