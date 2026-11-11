@@ -18,6 +18,7 @@ from src.guardrails import validate_input, validate_output
 from src.tracing import traced
 
 
+@traced(name="parcelpilot.retriever_initialization")
 @lru_cache(maxsize=1)
 def _get_shared_retriever():
     """Import and load the read-only RAG stack only for the first RAG query."""
