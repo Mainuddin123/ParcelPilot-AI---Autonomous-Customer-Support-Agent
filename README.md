@@ -436,3 +436,37 @@ This project is developed for educational and assessment purposes.
 - Streamlit chat interface
 - API integration
 - LLM fallback using structured decision logic
+
+---
+
+## ⚡ Reliability, Performance and Safety
+
+The upgrade branch includes the following implementation details:
+
+- **Lazy RAG initialization:** embedding/vector retrieval is not initialized for structured order, cancellation, service-credit, or account workflows.
+- **Process-level model reuse:** the embedding model, Cross-Encoder, and read-only retriever are reused across Streamlit chat sessions in one Python process. The first RAG request can still be slower because it performs cold initialization.
+- **Hybrid retrieval fallback:** dense FAISS + BM25 + RRF results remain available if Cross-Encoder loading or inference fails.
+- **Bounded Gemini calls:** requests use a configurable timeout (GEMINI_TIMEOUT_MS, default 20,000 ms) and at most one retry for recognized transient failures. LLM failures fall back to structured information where available.
+- **Retrieval fallback:** if document retrieval fails, the app returns a clearly labelled response based only on available structured records; it does not invent policy details.
+- **Account isolation:** order and ticket lookups require an Account ID and verify ownership. Customer-specific agreement chunks are filtered by account.
+- **Escalation confirmation:** a ticket is revalidated immediately before the action is recorded. A negative confirmation cancels the action.
+- **Idempotent escalation store:** SQLite persists local demo escalations and prevents more than one escalation record per ticket. The SQLite file is stored under storage/escalations.sqlite3.
+
+### Deployment limitation
+
+The SQLite escalation store is intended for a **single-instance local/demo deployment**. It is not a shared database for multiple app replicas and may not persist on ephemeral hosting platforms. A production multi-instance deployment should use a shared transactional database and authenticated user identity. The demo does not connect to a real carrier or ticketing platform.
+
+### LangSmith monitoring
+
+Set LANGSMITH_TRACING=true, LANGSMITH_API_KEY, and LANGSMITH_PROJECT=parcelpilot-ai in .env. Traced operations include agent processing, hybrid retrieval, response generation, and Gemini generation. Keep input/output hiding enabled when tracing customer-like data.
+
+### Run tests and retrieval evaluation
+
+```bash
+python -m pytest test_upgrade.py -q
+python evaluate_rag.py
+```
+
+The retrieval evaluation uses reviewed document/page labels in evaluation_dataset.json and reports Precision@K, Recall@K, MRR, and nDCG@K. These metrics are only meaningful after the relevance labels have been manually checked. Record the output as the measured result; do not claim a score before running the script.
+
+The Streamlit interface displays measured request latency. Compare the first RAG request (cold start) with later requests (warm start); structured workflows should avoid initializing the RAG models.
