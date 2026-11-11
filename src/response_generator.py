@@ -45,17 +45,17 @@ def generate_fallback_response(
 
         if workflow == "service_credit":
 
-            return f"""# Service Credit Decision
+            return f"""# Service Credit Verification
 
-You are not eligible for a service credit.
+We could not verify service-credit eligibility because the order was not found or could not be accessed.
 
 {message}"""
 
         if workflow == "cancellation":
 
-            return f"""# Cancellation Request
+            return f"""# Cancellation Verification
 
-Cancellation cannot be processed.
+We could not verify cancellation eligibility because the order was not found or could not be accessed.
 
 {message}"""
 
