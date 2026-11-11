@@ -260,3 +260,43 @@ def test_order_lookup_requires_account_id():
     result = lookup_order("ORD-1001", account_id=None)
     assert result["found"] is False
     assert "account id is required" in result["message"].lower()
+
+
+def test_structured_order_path_skips_rag_initialization(monkeypatch):
+    from src.agent import ParcelPilotAgent
+
+    monkeypatch.setattr("src.agent.lookup_account", lambda account_id: {"found": True})
+    monkeypatch.setattr("src.agent.lookup_order", lambda **kwargs: {
+        "found": True, "order": {"order_id": "ORD-1001"}
+    })
+    monkeypatch.setattr("src.agent.generate_fallback_response", lambda query, data: "Structured order result")
+    monkeypatch.setattr(
+        "src.agent._get_shared_retriever",
+        lambda: (_ for _ in ()).throw(AssertionError("RAG should not load for order status"))
+    )
+
+    result = ParcelPilotAgent().process(
+        "What is the status of my order?",
+        account_id="ACCT-001",
+        order_id="ORD-1001"
+    )
+    assert result["answer"] == "Structured order result"
+    assert result["status"] == "fallback_response"
+
+
+def test_retrieval_exception_returns_safe_fallback(monkeypatch):
+    from src.agent import ParcelPilotAgent
+
+    monkeypatch.setattr(
+        "src.agent._get_shared_retriever",
+        lambda: (_ for _ in ()).throw(RuntimeError("vector index unavailable"))
+    )
+    monkeypatch.setattr(
+        "src.agent.generate_fallback_response",
+        lambda query, data: "No verified structured policy record is available."
+    )
+
+    result = ParcelPilotAgent().process("What is the escalation SLA?")
+    assert result["status"] == "fallback_response"
+    assert "retrieval is temporarily unavailable" in result["answer"].lower()
+    assert result["citations"] == []
