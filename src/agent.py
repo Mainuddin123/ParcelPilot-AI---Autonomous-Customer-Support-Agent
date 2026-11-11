@@ -1,7 +1,6 @@
 from functools import lru_cache
 import uuid
 
-from src.rag.retriever import Retriever
 from src.workflow import detect_workflow
 
 from src.tools.cancellation_tools import check_cancellation
@@ -21,7 +20,8 @@ from src.tracing import traced
 
 @lru_cache(maxsize=1)
 def _get_shared_retriever():
-    """Load the read-only RAG stack once per Python process."""
+    """Import and load the read-only RAG stack only for the first RAG query."""
+    from src.rag.retriever import Retriever
     return Retriever()
 
 
