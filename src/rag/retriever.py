@@ -24,12 +24,7 @@ class Retriever:
         self.candidate_k = candidate_k
         self.rrf_k = rrf_k
         self.reranker = None
-        if enable_reranking:
-            try:
-                self.reranker = CrossEncoderReranker()
-            except Exception as error:
-                # Preserve retrieval availability if the optional model cannot load.
-                print(f"Reranker unavailable; using RRF ranking only: {error}")
+        self.enable_reranking = enable_reranking
         self._chunks = list(self.vector_store.chunks)
         tokenized = [self._tokenize(c.get("text", "")) for c in self._chunks]
         self.bm25 = BM25Okapi(tokenized) if tokenized else None
@@ -86,7 +81,15 @@ class Retriever:
             doc["rrf_score"] += priority * 0.0001
         candidates.sort(key=lambda item: item["rrf_score"], reverse=True)
 
-        if self.reranker:
+        if self.enable_reranking and self.reranker is None:
+            try:
+                self.reranker = CrossEncoderReranker()
+            except Exception as error:
+                # Keep hybrid retrieval available if model download/loading fails.
+                print(f"Reranker unavailable; using RRF ranking only: {error}")
+                self.enable_reranking = False
+
+        if self.reranker is not None:
             return self.reranker.rerank(query, candidates, top_k=top_k)
         return candidates[:top_k]
 
