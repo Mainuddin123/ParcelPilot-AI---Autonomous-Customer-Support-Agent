@@ -76,25 +76,20 @@ parcelpilot-ai-agent/
 Customer Query
       │
       ▼
-Intent / Workflow Detection
+Input Guardrails + Workflow Detection
       │
-      ├───────────────┬────────────────┬─────────────────┐
-      ▼               ▼                ▼                 ▼
-Order Status     Cancellation    Service Credit     Escalation
-      │               │                │                 │
-      └───────────────┴────────────────┴─────────────────┘
+      ├── Structured workflows
+      │      ├── Order / account lookup
+      │      ├── Cancellation / service-credit rules
+      │      └── Ticket validation + confirmed escalation
+      │
+      └── Policy / knowledge questions
+             ├── FAISS dense retrieval + BM25
+             ├── RRF fusion + Cross-Encoder reranking
+             └── Gemini response with source references
                               │
                               ▼
-                 Structured Data Retrieval
-                              │
-                              ▼
-                  RAG Document Retrieval
-                              │
-                              ▼
-                    Decision Workflow
-                              │
-                              ▼
-                     AI / Fallback Response
+                 Output Validation + Fallback
 ```
 
 ---
@@ -266,12 +261,11 @@ This allows core workflows such as order lookup, cancellation evaluation, servic
 | Streamlit | Interactive chat interface |
 | FastAPI | API layer |
 | Pandas | Structured data processing |
-| LangChain | LLM and RAG integration |
-| LangGraph | Workflow orchestration |
 | FAISS | Dense vector retrieval |\n| BM25 | Sparse keyword retrieval |\n| Reciprocal Rank Fusion | Hybrid ranking fusion |\n| Cross-Encoder | Retrieved-document reranking |\n| LangSmith | LLM and retrieval tracing |
 | Sentence Transformers | Text embeddings |
 | Google Gemini | AI response generation |
 | PyPDF | PDF document processing |
+| SQLite | Local escalation persistence and duplicate protection |
 | Python Dotenv | Environment variable management |
 
 ---
