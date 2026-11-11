@@ -11,7 +11,7 @@ from src.tools.order_tools import (
 )
 
 from src.escalation_action import create_escalation
-from src.response_generator import generate_response
+from src.response_generator import generate_response, generate_fallback_response
 from src.guardrails import validate_input
 from src.tracing import traced
 
@@ -19,7 +19,7 @@ from src.tracing import traced
 class ParcelPilotAgent:
 
     def __init__(self):
-        self.retriever = Retriever()
+        # Load embedding/vector/reranking models only when a RAG query needs them.\n        self.retriever = None
         self.pending_escalation = None
 
     @traced(name="parcelpilot.agent_process")
@@ -310,8 +310,25 @@ class ParcelPilotAgent:
             }
 
         # =========================================
-        # DOCUMENT RETRIEVAL
+        # STRUCTURED WORKFLOW FAST PATH
         # =========================================
+        # Order and policy decisions already come from validated structured
+        # records/tools. Do not initialize retrieval models or call Gemini.
+        if workflow in {"order", "cancellation", "service_credit", "account"}:
+            answer = generate_fallback_response(query, context_data)
+            return {
+                "query": query,
+                "answer": answer,
+                "structured_data": context_data,
+                "citations": [],
+                "status": "success"
+            }
+
+        # =========================================
+        # DOCUMENT RETRIEVAL (LAZY INITIALIZATION)
+        # =========================================
+        if self.retriever is None:
+            self.retriever = Retriever()
 
         results = self.retriever.retrieve(
             query=query,
