@@ -3,6 +3,7 @@ import time
 
 from dotenv import load_dotenv
 from google import genai
+from src.tracing import traced
 
 
 load_dotenv()
@@ -23,6 +24,7 @@ class GeminiLLM:
             api_key=api_key
         )
 
+    @traced(name="parcelpilot.gemini_generation")
     def generate(self, prompt: str):
 
         max_attempts = 3

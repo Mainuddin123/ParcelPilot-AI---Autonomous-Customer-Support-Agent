@@ -1,6 +1,7 @@
 import streamlit as st
-import requests
 import uuid
+
+from src.agent import ParcelPilotAgent
 
 
 # =========================================================
@@ -15,8 +16,6 @@ st.set_page_config(
 )
 
 
-API_URL = "http://127.0.0.1:8000/query"
-
 
 # =========================================================
 # SESSION STATE
@@ -24,6 +23,9 @@ API_URL = "http://127.0.0.1:8000/query"
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+if "agents" not in st.session_state:
+    st.session_state.agents = {}
 
 if "conversations" not in st.session_state:
     st.session_state.conversations = {}
@@ -606,89 +608,30 @@ if query:
         save_current_chat()
 
         # -------------------------------------------------
-        # BUILD API PAYLOAD
-        # -------------------------------------------------
-
-        payload = {
-            "query": query,
-
-            # IMPORTANT:
-            # Send the current chat ID to the backend
-            "session_id": (
-                st.session_state.current_chat_id
-            )
-        }
-
-        if account_id.strip():
-
-            payload["account_id"] = (
-                account_id.strip()
-            )
-
-        if order_id.strip():
-
-            payload["order_id"] = (
-                order_id.strip()
-            )
-
-        if ticket_id.strip():
-
-            payload["ticket_id"] = (
-                ticket_id.strip()
-            )
-
-        # -------------------------------------------------
-        # API REQUEST
+        # DIRECT LOCAL AGENT EXECUTION (NO FASTAPI SERVER)
         # -------------------------------------------------
 
         try:
-
             with st.spinner(
                 "ParcelPilot AI is analyzing your request..."
             ):
+                chat_id = st.session_state.current_chat_id
+                if chat_id not in st.session_state.agents:
+                    st.session_state.agents[chat_id] = ParcelPilotAgent()
 
-                response = requests.post(
-                    API_URL,
-                    json=payload,
-                    timeout=90
+                agent = st.session_state.agents[chat_id]
+                data = agent.process(
+                    query=query,
+                    account_id=account_id.strip() or None,
+                    order_id=order_id.strip() or None,
+                    ticket_id=ticket_id.strip() or None
                 )
 
-                response.raise_for_status()
-
-                data = response.json()
-
-            # -------------------------------------------------
-            # EXTRACT API RESPONSE
-            # -------------------------------------------------
-
-            answer = data.get(
-                "answer",
-                "No response was generated."
-            )
-
-            structured_data = data.get(
-                "structured_data",
-                {}
-            )
-
-            workflow = structured_data.get(
-                "workflow",
-                "general"
-            )
-
-            citations = data.get(
-                "citations",
-                []
-            )
-
-            status = data.get(
-                "status",
-                "success"
-            )
-
-            # -------------------------------------------------
-            # ADD ASSISTANT RESPONSE
-            # -------------------------------------------------
+            answer = data.get("answer", "No response was generated.")
+            structured_data = data.get("structured_data", {})
+            workflow = structured_data.get("workflow", "general")
+            citations = data.get("citations", [])
+            status = data.get("status", "success")
 
             st.session_state.messages.append(
                 {
@@ -700,84 +643,20 @@ if query:
                 }
             )
 
-        # -------------------------------------------------
-        # CONNECTION ERROR
-        # -------------------------------------------------
-
-        except requests.exceptions.ConnectionError:
-
+        except Exception as error:
             st.session_state.messages.append(
                 {
                     "role": "assistant",
                     "content": (
-                        "⚠️ Unable to connect to the "
-                        "ParcelPilot API.\n\n"
-                        "Make sure the FastAPI server "
-                        "is running."
+                        "⚠️ ParcelPilot encountered an internal error. "
+                        "Please check the terminal logs and try again."
                     ),
                     "workflow": "system",
                     "citations": [],
                     "status": "error"
                 }
             )
-
-        # -------------------------------------------------
-        # TIMEOUT ERROR
-        # -------------------------------------------------
-
-        except requests.exceptions.Timeout:
-
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": (
-                        "⚠️ The request took too long "
-                        "to complete.\n\n"
-                        "Please try again."
-                    ),
-                    "workflow": "system",
-                    "citations": [],
-                    "status": "error"
-                }
-            )
-
-        # -------------------------------------------------
-        # HTTP ERROR
-        # -------------------------------------------------
-
-        except requests.exceptions.HTTPError:
-
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": (
-                        f"⚠️ API error: "
-                        f"{response.status_code}"
-                    ),
-                    "workflow": "system",
-                    "citations": [],
-                    "status": "error"
-                }
-            )
-
-        # -------------------------------------------------
-        # UNEXPECTED ERROR
-        # -------------------------------------------------
-
-        except Exception:
-
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": (
-                        "⚠️ An unexpected error occurred. "
-                        "Please try again."
-                    ),
-                    "workflow": "system",
-                    "citations": [],
-                    "status": "error"
-                }
-            )
+            print(f"ParcelPilot execution error: {error}")
 
         # -------------------------------------------------
         # SAVE CONVERSATION

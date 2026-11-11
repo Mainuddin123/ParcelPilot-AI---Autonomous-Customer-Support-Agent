@@ -1,286 +1,116 @@
+import re
+from rank_bm25 import BM25Okapi
+
 from src.rag.vector_store import VectorStore
+from src.rag.reranker import CrossEncoderReranker
+from src.tracing import traced
 
 
 class Retriever:
+    """Dense FAISS + BM25 retrieval, RRF fusion and optional reranking."""
 
-    # Higher number = higher authority
+    EXCLUDED = {"deprecated", "deprecated_policy", "obsolete", "archived"}
     SOURCE_PRIORITY = {
         "customer_agreement": 4,
         "current_sop": 3,
         "current_policy": 2,
-        "general_document": 1
+        "product_operations": 1,
+        "general_document": 1,
     }
 
-    # Documents with these types/statuses must not be used
-    EXCLUDED_SOURCE_TYPES = {
-        "deprecated",
-        "obsolete",
-        "archived"
-    }
-
-    def __init__(self):
+    def __init__(self, candidate_k=20, rrf_k=60, enable_reranking=True):
         self.vector_store = VectorStore()
         self.vector_store.load()
+        self.candidate_k = candidate_k
+        self.rrf_k = rrf_k
+        self.reranker = CrossEncoderReranker() if enable_reranking else None
+        self._chunks = list(self.vector_store.chunks)
+        tokenized = [self._tokenize(c.get("text", "")) for c in self._chunks]
+        self.bm25 = BM25Okapi(tokenized) if tokenized else None
 
-    def retrieve(
-        self,
-        query: str,
-        account_id: str = None,
-        top_k: int = 5
-    ):
-        """
-        Retrieve relevant and authoritative document chunks.
+    @staticmethod
+    def _tokenize(text):
+        return re.findall(r"[a-z0-9]+", str(text).lower())
 
-        Priority:
-        1. Customer agreement for the account
-        2. Current SOP
-        3. Current policy
-        4. General documents
+    def _allowed(self, chunk, account_id):
+        source_type = str(chunk.get("source_type", "")).lower()
+        status = str(chunk.get("status", "current")).lower()
+        if source_type in self.EXCLUDED or status in self.EXCLUDED:
+            return False
+        if source_type == "customer_agreement":
+            return bool(account_id) and chunk.get("account_id") == account_id
+        return True
 
-        Deprecated, obsolete, and archived documents
-        are excluded.
-        """
-
-        results = self.vector_store.search(
-            query=query,
-            top_k=top_k,
-            account_id=account_id
-        )
-
-        # =========================================
-        # EXCLUDE DEPRECATED / OBSOLETE DOCUMENTS
-        # =========================================
-
-        valid_results = []
-
-        for result in results:
-
-            source_type = str(
-                result.get(
-                    "source_type",
-                    ""
-                )
-            ).lower()
-
-            status = str(
-                result.get(
-                    "status",
-                    ""
-                )
-            ).lower()
-
-            if source_type in self.EXCLUDED_SOURCE_TYPES:
+    def _bm25_search(self, query, account_id):
+        if self.bm25 is None:
+            return []
+        scores = self.bm25.get_scores(self._tokenize(query))
+        indices = sorted(range(len(scores)), key=lambda i: float(scores[i]), reverse=True)
+        results = []
+        for idx in indices:
+            chunk = self._chunks[idx]
+            if not self._allowed(chunk, account_id):
                 continue
+            item = dict(chunk)
+            item["bm25_score"] = float(scores[idx])
+            results.append(item)
+            if len(results) >= self.candidate_k:
+                break
+        return results
 
-            if status in self.EXCLUDED_SOURCE_TYPES:
-                continue
-
-            valid_results.append(
-                result
-            )
-
-        # =========================================
-        # SOURCE AUTHORITY RANKING
-        # =========================================
-
-        valid_results.sort(
-            key=lambda result: self.SOURCE_PRIORITY.get(
-                str(
-                    result.get(
-                        "source_type",
-                        ""
-                    )
-                ).lower(),
-                0
-            ),
-            reverse=True
+    @traced("parcelpilot.hybrid_retrieval")
+    def retrieve(self, query, account_id=None, top_k=5):
+        dense = self.vector_store.search(
+            query=query, top_k=self.candidate_k, account_id=account_id
         )
+        lexical = self._bm25_search(query, account_id)
 
-        query_lower = query.lower()
+        fused = {}
+        for ranking in (dense, lexical):
+            for rank, doc in enumerate(ranking, start=1):
+                key = (doc.get("source"), doc.get("page"), doc.get("text"))
+                if key not in fused:
+                    fused[key] = dict(doc)
+                    fused[key]["rrf_score"] = 0.0
+                fused[key]["rrf_score"] += 1.0 / (self.rrf_k + rank)
 
-        # =========================================
-        # ESCALATION / PRIORITY / SLA QUERIES
-        # =========================================
+        candidates = list(fused.values())
+        for doc in candidates:
+            priority = self.SOURCE_PRIORITY.get(str(doc.get("source_type", "")).lower(), 0)
+            doc["rrf_score"] += priority * 0.0001
+        candidates.sort(key=lambda item: item["rrf_score"], reverse=True)
 
-        escalation_keywords = [
-            "priority",
-            "escalation",
-            "p1",
-            "severity",
-            "sla"
-        ]
+        if self.reranker:
+            return self.reranker.rerank(query, candidates, top_k=top_k)
+        return candidates[:top_k]
 
-        if any(
-            word in query_lower
-            for word in escalation_keywords
-        ):
-
-            preferred_types = {
-                "customer_agreement",
-                "current_sop",
-                "current_policy"
-            }
-
-            filtered_results = [
-                result
-                for result in valid_results
-                if str(
-                    result.get(
-                        "source_type",
-                        ""
-                    )
-                ).lower()
-                in preferred_types
-            ]
-
-            if filtered_results:
-                return filtered_results[:top_k]
-
-        # =========================================
-        # CANCELLATION / SERVICE CREDIT QUERIES
-        # =========================================
-
-        decision_keywords = [
-            "cancel",
-            "cancellation",
-            "refund",
-            "credit",
-            "service credit",
-            "fee"
-        ]
-
-        if any(
-            word in query_lower
-            for word in decision_keywords
-        ):
-
-            preferred_types = {
-                "customer_agreement",
-                "current_sop",
-                "current_policy"
-            }
-
-            filtered_results = [
-                result
-                for result in valid_results
-                if str(
-                    result.get(
-                        "source_type",
-                        ""
-                    )
-                ).lower()
-                in preferred_types
-            ]
-
-            if filtered_results:
-                return filtered_results[:top_k]
-
-        return valid_results[:top_k]
-
-    def format_context(
-        self,
-        results
-    ):
-        """
-        Convert retrieved chunks into a readable
-        context string for the AI agent.
-        """
-
+    def format_context(self, results):
         if not results:
             return "No relevant documents found."
-
-        context_parts = []
-
-        for index, result in enumerate(
-            results,
-            start=1
-        ):
-
-            source = result.get(
-                "source",
-                "Unknown"
+        parts = []
+        for i, result in enumerate(results, start=1):
+            parts.append(
+                f"[SOURCE {i}]\nDocument: {result.get('source', 'Unknown')}\n"
+                f"Page: {result.get('page', 'Unknown')}\n"
+                f"Source Type: {result.get('source_type', 'general_document')}\n\n"
+                f"{result.get('text', '')}"
             )
+        return "\n\n".join(parts)
 
-            page = result.get(
-                "page",
-                "Unknown"
-            )
-
-            source_type = result.get(
-                "source_type",
-                "general_document"
-            )
-
-            text = result.get(
-                "text",
-                ""
-            )
-
-            context_parts.append(
-                f"""
-[SOURCE {index}]
-Document: {source}
-Page: {page}
-Source Type: {source_type}
-
-{text}
-"""
-            )
-
-        return "\n".join(
-            context_parts
-        )
-
-    def get_citations(
-        self,
-        results
-    ):
-        """
-        Extract unique source citations and keep them
-        ordered by source authority.
-        """
-
-        citations = []
-        seen = set()
-
+    def get_citations(self, results):
+        citations, seen = [], set()
         for result in results:
-
             citation = {
-                "source": result.get(
-                    "source",
-                    "Unknown"
-                ),
-                "page": result.get(
-                    "page",
-                    "Unknown"
-                ),
-                "source_type": result.get(
-                    "source_type",
-                    "general_document"
-                )
+                "source": result.get("source", "Unknown"),
+                "page": result.get("page", "Unknown"),
+                "source_type": result.get("source_type", "general_document"),
             }
-
-            key = (
-                citation["source"],
-                citation["page"]
-            )
-
+            key = (citation["source"], citation["page"])
             if key not in seen:
-
-                citations.append(
-                    citation
-                )
-
+                citations.append(citation)
                 seen.add(key)
-
         citations.sort(
-            key=lambda citation: self.SOURCE_PRIORITY.get(
-                str(
-                    citation["source_type"]
-                ).lower(),
-                0
-            ),
-            reverse=True
+            key=lambda item: self.SOURCE_PRIORITY.get(item["source_type"], 0),
+            reverse=True,
         )
-
         return citations
