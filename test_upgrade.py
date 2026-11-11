@@ -39,7 +39,9 @@ def test_secret_like_output_is_blocked():
 
 def test_legacy_agent_instance_lazily_initializes_retriever():
     from unittest.mock import patch
-    from src.agent import ParcelPilotAgent
+    from src.agent import ParcelPilotAgent, _get_shared_retriever
+
+    _get_shared_retriever.cache_clear()
 
     class DummyRetriever:
         def retrieve(self, query, account_id=None):
@@ -62,6 +64,7 @@ def test_legacy_agent_instance_lazily_initializes_retriever():
     factory.assert_called_once()
     assert result == {"answer": "Policy answer"}
     assert isinstance(agent.retriever, DummyRetriever)
+    _get_shared_retriever.cache_clear()
 
 
 def test_cancellation_response_accepts_can_cancel_field():
@@ -219,3 +222,44 @@ def test_reranker_prediction_failure_uses_rrf_results():
     assert len(results) == 1
     assert results[0]["source"] == "policy.pdf"
     assert retriever.enable_reranking is False
+
+
+def test_orphaned_yes_does_not_start_rag_or_create_action():
+    from src.agent import ParcelPilotAgent
+
+    agent = ParcelPilotAgent()
+    result = agent.process("Yes")
+    assert result["status"] == "no_pending_confirmation"
+    assert "no pending escalation" in result["answer"].lower()
+
+
+def test_escalation_store_prevents_duplicate_ticket_with_new_key(tmp_path, monkeypatch):
+    from src import escalation_action
+
+    monkeypatch.setattr(escalation_action, "DB_PATH", tmp_path / "escalations.sqlite3")
+    first = escalation_action.create_escalation(
+        "TKT-504", "First request", idempotency_key="first-key"
+    )
+    second = escalation_action.create_escalation(
+        "TKT-504", "Repeated request", idempotency_key="different-key"
+    )
+
+    assert first["escalation_id"] == second["escalation_id"]
+    assert second["already_exists"] is True
+    assert len(escalation_action.list_escalations()) == 1
+
+
+def test_ticket_lookup_requires_account_id(monkeypatch):
+    from src.tools import ticket_tools
+
+    result = ticket_tools.lookup_ticket("TKT-504", account_id=None)
+    assert result["found"] is False
+    assert "account id is required" in result["reason"].lower()
+
+
+def test_order_lookup_requires_account_id():
+    from src.tools.order_tools import lookup_order
+
+    result = lookup_order("ORD-1001", account_id=None)
+    assert result["found"] is False
+    assert "account id is required" in result["message"].lower()
