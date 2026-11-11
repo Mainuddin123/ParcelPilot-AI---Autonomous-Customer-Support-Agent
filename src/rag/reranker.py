@@ -2,6 +2,7 @@ from functools import lru_cache
 from src.tracing import traced
 
 
+@traced(name="parcelpilot.cross_encoder_model_load")
 @lru_cache(maxsize=1)
 def _load_cross_encoder(model_name):
     from sentence_transformers import CrossEncoder
