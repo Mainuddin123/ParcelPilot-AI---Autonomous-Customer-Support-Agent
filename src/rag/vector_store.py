@@ -6,6 +6,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from src.config import STORAGE_DIR
+from src.tracing import traced
 
 
 @lru_cache(maxsize=1)
@@ -109,6 +110,7 @@ class VectorStore:
                 file
             )
 
+    @traced(name="parcelpilot.faiss_dense_search")
     def search(
         self,
         query,
@@ -116,112 +118,47 @@ class VectorStore:
         account_id=None,
         include_deprecated=False
     ):
-        """
-        Search relevant document chunks.
-
-        Rules:
-        1. Deprecated, obsolete, and archived documents
-           are excluded by default.
-        2. Customer agreements are only returned for
-           the matching account_id.
-        3. Semantic similarity determines relevance.
-        """
-
+        """Search only the candidates needed, expanding when access filters apply."""
         if self.index is None:
-            raise ValueError(
-                "Vector store is not loaded."
-            )
+            raise ValueError("Vector store is not loaded.")
+        if not self.chunks or top_k <= 0:
+            return []
 
         query_embedding = self.model.encode(
             [query],
-            convert_to_numpy=True
+            convert_to_numpy=True,
+            show_progress_bar=False
         )
+        query_embedding = np.asarray(query_embedding, dtype="float32")
+        faiss.normalize_L2(query_embedding)
 
-        query_embedding = np.array(
-            query_embedding,
-            dtype="float32"
-        )
-
-        faiss.normalize_L2(
-            query_embedding
-        )
-
-        # Search all chunks so filtering does not
-        # accidentally remove the only relevant results.
-        search_k = len(self.chunks)
-
-        scores, indices = self.index.search(
-            query_embedding,
-            search_k
-        )
-
+        # Avoid scanning the full index on every request. Expand only when
+        # account/status filters leave too few eligible candidates.
+        search_k = min(max(top_k * 4, top_k), len(self.chunks))
         results = []
-
-        for score, index in zip(
-            scores[0],
-            indices[0]
-        ):
-
-            if index == -1:
-                continue
-
-            chunk = self.chunks[index]
-
-            # =====================================
-            # EXCLUDE INACTIVE DOCUMENTS
-            # =====================================
-
-            status = str(
-                chunk.get(
-                    "status",
-                    "current"
-                )
-            ).lower()
-
-            if (
-                not include_deprecated
-                and status in self.EXCLUDED_STATUSES
-            ):
-                continue
-
-            # =====================================
-            # CUSTOMER AGREEMENT ACCESS CONTROL
-            # =====================================
-
-            source_type = str(
-                chunk.get(
-                    "source_type",
-                    ""
-                )
-            ).lower()
-
-            if source_type == "customer_agreement":
-
-                # Do not expose customer agreements
-                # without an account context.
-                if account_id is None:
+        while True:
+            scores, indices = self.index.search(query_embedding, search_k)
+            results = []
+            for score, chunk_idx in zip(scores[0], indices[0]):
+                if chunk_idx < 0:
                     continue
-
-                # Only return the agreement belonging
-                # to the requested account.
-                if (
-                    chunk.get("account_id")
-                    != account_id
+                chunk = self.chunks[int(chunk_idx)]
+                status = str(chunk.get("status", "current")).lower()
+                source_type = str(chunk.get("source_type", "")).lower()
+                if not include_deprecated and (
+                    status in self.EXCLUDED_STATUSES
+                    or source_type in self.EXCLUDED_STATUSES
                 ):
                     continue
+                if source_type == "customer_agreement":
+                    if not account_id or chunk.get("account_id") != account_id:
+                        continue
+                results.append({**chunk, "score": float(score)})
+                if len(results) >= top_k:
+                    break
 
-            results.append({
-                **chunk,
-                "score": float(score)
-            })
-
-        # =========================================
-        # SEMANTIC RELEVANCE RANKING
-        # =========================================
-
-        results.sort(
-            key=lambda item: item["score"],
-            reverse=True
-        )
+            if len(results) >= top_k or search_k >= len(self.chunks):
+                break
+            search_k = min(search_k * 2, len(self.chunks))
 
         return results[:top_k]
