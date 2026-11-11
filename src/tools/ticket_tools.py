@@ -19,6 +19,7 @@ def lookup_ticket(
             "reason": "An Account ID is required to verify ticket ownership."
         }
 
+    account_id = str(account_id).strip().upper()
     ticket = data.get_ticket(ticket_id)
 
     if ticket is None:
