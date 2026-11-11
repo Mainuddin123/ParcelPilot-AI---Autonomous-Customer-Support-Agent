@@ -1,4 +1,6 @@
 from src.llm import GeminiLLM
+from src.guardrails import validate_output
+from src.tracing import traced
 
 
 def generate_fallback_response(
@@ -260,6 +262,7 @@ This response is based on the available structured account data."""
     )
 
 
+@traced(name="parcelpilot.response_generation")
 def generate_response(
     query,
     structured_data,
@@ -350,6 +353,11 @@ Provide the final customer support answer.
         )
 
         status = "fallback_response"
+
+    output_ok, safe_answer = validate_output(answer)
+    if not output_ok:
+        answer = safe_answer
+        status = "blocked_output"
 
     return {
         "query": query,
