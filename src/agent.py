@@ -12,6 +12,8 @@ from src.tools.order_tools import (
 
 from src.escalation_action import create_escalation
 from src.response_generator import generate_response
+from src.guardrails import validate_input
+from src.tracing import traced
 
 
 class ParcelPilotAgent:
@@ -20,6 +22,7 @@ class ParcelPilotAgent:
         self.retriever = Retriever()
         self.pending_escalation = None
 
+    @traced(name="parcelpilot.agent_process")
     def process(
         self,
         query: str,
@@ -27,6 +30,16 @@ class ParcelPilotAgent:
         order_id: str = None,
         ticket_id: str = None
     ):
+
+        is_valid, rejection = validate_input(query)
+        if not is_valid:
+            return {
+                "query": query,
+                "answer": rejection,
+                "structured_data": {"workflow": "guardrail"},
+                "citations": [],
+                "status": "blocked_input"
+            }
 
         query_lower = query.lower().strip()
 
