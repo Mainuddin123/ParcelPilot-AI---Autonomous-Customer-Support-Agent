@@ -67,6 +67,12 @@ def lookup_order(
     and proactively detect issues.
     """
 
+    if not account_id:
+        return {
+            "found": False,
+            "message": "An Account ID is required to verify order ownership."
+        }
+
     order = data.get_order(order_id)
 
     if order is None:
