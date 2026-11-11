@@ -300,3 +300,76 @@ def test_retrieval_exception_returns_safe_fallback(monkeypatch):
     assert result["status"] == "fallback_response"
     assert "retrieval is temporarily unavailable" in result["answer"].lower()
     assert result["citations"] == []
+
+
+def test_faiss_search_uses_bounded_initial_candidates(monkeypatch):
+    import numpy as np
+    from src.rag import vector_store as module
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            return np.ones((1, 3), dtype="float32")
+
+    class FakeIndex:
+        def __init__(self):
+            self.last_k = None
+
+        def search(self, query_embedding, k):
+            self.last_k = k
+            return (
+                np.arange(k, 0, -1, dtype="float32").reshape(1, -1),
+                np.arange(k, dtype="int64").reshape(1, -1),
+            )
+
+    store = module.VectorStore.__new__(module.VectorStore)
+    store.model = FakeModel()
+    store.index = FakeIndex()
+    store.chunks = [
+        {"text": f"document {i}", "source": "policy.pdf", "page": i + 1,
+         "source_type": "current_policy", "status": "current"}
+        for i in range(100)
+    ]
+    monkeypatch.setattr(module.faiss, "normalize_L2", lambda values: None)
+
+    results = store.search("policy query", top_k=2)
+
+    assert len(results) == 2
+    assert store.index.last_k == 8
+    assert store.index.last_k < len(store.chunks)
+
+
+def test_faiss_search_expands_candidates_for_account_filter(monkeypatch):
+    import numpy as np
+    from src.rag import vector_store as module
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            return np.ones((1, 3), dtype="float32")
+
+    class FakeIndex:
+        def __init__(self):
+            self.requested_k = []
+
+        def search(self, query_embedding, k):
+            self.requested_k.append(k)
+            return (
+                np.arange(k, 0, -1, dtype="float32").reshape(1, -1),
+                np.arange(k, dtype="int64").reshape(1, -1),
+            )
+
+    store = module.VectorStore.__new__(module.VectorStore)
+    store.model = FakeModel()
+    store.index = FakeIndex()
+    store.chunks = [
+        {"text": f"agreement {i}", "source": "agreement.pdf", "page": i + 1,
+         "source_type": "customer_agreement", "status": "current",
+         "account_id": "ACCT-002" if i < 8 else "ACCT-001"}
+        for i in range(100)
+    ]
+    monkeypatch.setattr(module.faiss, "normalize_L2", lambda values: None)
+
+    results = store.search("agreement query", top_k=2, account_id="ACCT-001")
+
+    assert len(results) == 2
+    assert all(item["account_id"] == "ACCT-001" for item in results)
+    assert store.index.requested_k == [8, 16]
