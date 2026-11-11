@@ -40,44 +40,51 @@ def create_escalation(ticket_id, reason, idempotency_key=None):
     escalation_id = "ESC-" + normalized_ticket
     created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    with _connect() as connection:
-        existing = connection.execute(
-            "SELECT * FROM escalations WHERE ticket_id = ? OR idempotency_key = ?",
-            (normalized_ticket, request_key),
-        ).fetchone()
+    connection = _connect()
+    try:
+        with connection:
+            existing = connection.execute(
+                "SELECT * FROM escalations WHERE ticket_id = ? OR idempotency_key = ?",
+                (normalized_ticket, request_key),
+            ).fetchone()
 
-        if existing:
-            result = dict(existing)
-            result["already_exists"] = True
+            if existing:
+                result = dict(existing)
+                result["already_exists"] = True
+                return result
+
+            connection.execute(
+                """
+                INSERT INTO escalations
+                (escalation_id, ticket_id, reason, status, created_at, idempotency_key)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    escalation_id,
+                    normalized_ticket,
+                    str(reason),
+                    "Escalation created",
+                    created_at,
+                    request_key,
+                ),
+            )
+            result = dict(connection.execute(
+                "SELECT * FROM escalations WHERE ticket_id = ?",
+                (normalized_ticket,),
+            ).fetchone())
+            result["already_exists"] = False
             return result
-
-        connection.execute(
-            """
-            INSERT INTO escalations
-            (escalation_id, ticket_id, reason, status, created_at, idempotency_key)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                escalation_id,
-                normalized_ticket,
-                str(reason),
-                "Escalation created",
-                created_at,
-                request_key,
-            ),
-        )
-        result = dict(connection.execute(
-            "SELECT * FROM escalations WHERE ticket_id = ?",
-            (normalized_ticket,),
-        ).fetchone())
-        result["already_exists"] = False
-        return result
+    finally:
+        connection.close()
 
 
 def list_escalations():
     """Return persisted escalation records for diagnostics."""
-    with _connect() as connection:
+    connection = _connect()
+    try:
         rows = connection.execute(
             "SELECT * FROM escalations ORDER BY created_at DESC"
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        connection.close()
