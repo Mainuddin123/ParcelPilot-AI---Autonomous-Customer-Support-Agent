@@ -97,3 +97,125 @@ def test_cancellation_response_denies_when_can_cancel_false():
         }
     )
     assert "not eligible for cancellation" in answer.lower()
+
+
+def test_escalation_no_cancels_without_creating(monkeypatch):
+    from src.agent import ParcelPilotAgent
+
+    agent = ParcelPilotAgent()
+    monkeypatch.setattr("src.agent.lookup_ticket", lambda **kwargs: {
+        "found": True, "ticket": {"ticket_id": "TKT-504"}
+    })
+    create_calls = []
+    monkeypatch.setattr("src.agent.create_escalation", lambda **kwargs: create_calls.append(kwargs))
+
+    pending = agent.process(
+        "I want to escalate my issue.",
+        account_id="ACCT-001",
+        ticket_id="TKT-504"
+    )
+    assert pending["status"] == "pending_confirmation"
+
+    cancelled = agent.process("No")
+    assert cancelled["status"] == "success"
+    assert "cancelled" in cancelled["answer"].lower()
+    assert create_calls == []
+    assert agent.pending_escalation is None
+
+
+def test_escalation_yes_revalidates_then_creates(monkeypatch):
+    from src.agent import ParcelPilotAgent
+
+    agent = ParcelPilotAgent()
+    monkeypatch.setattr("src.agent.lookup_ticket", lambda **kwargs: {
+        "found": True, "ticket": {"ticket_id": "TKT-504"}
+    })
+    created = []
+    monkeypatch.setattr("src.agent.create_escalation", lambda **kwargs: (
+        created.append(kwargs) or {
+            "escalation_id": "ESC-TKT-504",
+            "ticket_id": "TKT-504",
+            "status": "Escalation created"
+        }
+    ))
+
+    pending = agent.process(
+        "I want to escalate my issue.",
+        account_id="ACCT-001",
+        ticket_id="TKT-504"
+    )
+    assert pending["status"] == "pending_confirmation"
+
+    confirmed = agent.process("Yes")
+    assert confirmed["status"] == "success"
+    assert len(created) == 1
+    assert created[0]["ticket_id"] == "TKT-504"
+    assert created[0]["idempotency_key"]
+    assert agent.pending_escalation is None
+
+
+def test_escalation_revalidates_ticket_before_side_effect(monkeypatch):
+    from src.agent import ParcelPilotAgent
+
+    agent = ParcelPilotAgent()
+    checks = iter([
+        {"found": True, "ticket": {"ticket_id": "TKT-504"}},
+        {"found": False, "reason": "Ticket no longer accessible"}
+    ])
+    monkeypatch.setattr("src.agent.lookup_ticket", lambda **kwargs: next(checks))
+    create_calls = []
+    monkeypatch.setattr("src.agent.create_escalation", lambda **kwargs: create_calls.append(kwargs))
+
+    agent.process(
+        "I want to escalate my issue.",
+        account_id="ACCT-001",
+        ticket_id="TKT-504"
+    )
+    result = agent.process("Yes")
+
+    assert result["status"] == "validation_failed"
+    assert create_calls == []
+
+
+def test_persistent_escalation_is_idempotent(tmp_path, monkeypatch):
+    from src import escalation_action
+
+    monkeypatch.setattr(escalation_action, "DB_PATH", tmp_path / "escalations.sqlite3")
+    first = escalation_action.create_escalation(
+        "TKT-504", "Pickup mismatch", idempotency_key="request-123"
+    )
+    repeated = escalation_action.create_escalation(
+        "TKT-504", "Pickup mismatch", idempotency_key="request-123"
+    )
+
+    assert first["escalation_id"] == repeated["escalation_id"]
+    assert repeated["already_exists"] is True
+    assert len(escalation_action.list_escalations()) == 1
+
+
+def test_reranker_prediction_failure_uses_rrf_results():
+    from src.rag.retriever import Retriever
+
+    class DummyVectorStore:
+        def search(self, **kwargs):
+            return [{"source": "policy.pdf", "page": 1, "text": "policy text"}]
+
+    class BrokenReranker:
+        def rerank(self, *args, **kwargs):
+            raise RuntimeError("model inference failed")
+
+    retriever = Retriever.__new__(Retriever)
+    retriever.vector_store = DummyVectorStore()
+    retriever.candidate_k = 5
+    retriever.rrf_k = 60
+    retriever.reranker = BrokenReranker()
+    retriever.enable_reranking = True
+    retriever._reranker_lock = __import__("threading").Lock()
+    retriever.bm25 = None
+    retriever._chunks = []
+
+    results = retriever.retrieve("policy question", top_k=3)
+
+    assert len(results) == 1
+    assert results[0]["source"] == "policy.pdf"
+    assert retriever.enable_reranking is False
