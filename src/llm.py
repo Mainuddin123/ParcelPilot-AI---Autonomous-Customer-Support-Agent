@@ -3,6 +3,7 @@ import time
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 from src.tracing import traced
 
 
@@ -20,14 +21,16 @@ class GeminiLLM:
                 "GEMINI_API_KEY not found in .env file"
             )
 
+        timeout_ms = int(os.getenv("GEMINI_TIMEOUT_MS", "20000"))
         self.client = genai.Client(
-            api_key=api_key
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=timeout_ms)
         )
 
     @traced(name="parcelpilot.gemini_generation")
     def generate(self, prompt: str):
 
-        max_attempts = 3
+        max_attempts = 2
 
         for attempt in range(max_attempts):
 
@@ -61,16 +64,16 @@ class GeminiLLM:
                         "Gemini API quota exceeded."
                     )
 
-                # Last attempt
-                if attempt == max_attempts - 1:
+                # Retry only transient rate-limit, server, or timeout failures.
+                transient = any(code in error_message for code in (
+                    "429", "500", "502", "503", "504",
+                    "RESOURCE_EXHAUSTED", "UNAVAILABLE",
+                    "DeadlineExceeded", "Timeout"
+                ))
+                if attempt == max_attempts - 1 or not transient:
+                    raise RuntimeError(f"LLM request failed: {e}") from e
 
-                    raise RuntimeError(
-                        f"LLM request failed: {e}"
-                    )
-
-                wait_time = 3 * (
-                    attempt + 1
-                )
+                wait_time = 1.5 * (attempt + 1)
 
                 print(
                     f"LLM attempt {attempt + 1} failed. "
