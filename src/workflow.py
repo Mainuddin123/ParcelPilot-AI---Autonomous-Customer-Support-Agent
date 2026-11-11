@@ -1,91 +1,55 @@
 def detect_workflow(query: str):
-    """
-    Detect the appropriate customer support workflow
-    based on the user's query.
-    """
+    q = query.lower().strip()
 
-    query_lower = query.lower().strip()
-
-    # Cancellation workflow
-    cancellation_keywords = [
-        "cancel",
-        "cancellation",
-        "cancel my order",
-        "stop shipment",
-        "stop my parcel"
+    cancellation = [
+        "can i cancel", "cancel my order", "cancel order",
+        "cancel shipment", "cancel my shipment", "cancel my parcel",
+        "i want to cancel", "please cancel", "stop shipment",
+        "stop my parcel", "request cancellation"
     ]
-
-    if any(keyword in query_lower for keyword in cancellation_keywords):
+    if any(k in q for k in cancellation):
         return "cancellation"
 
-    # Service credit workflow
-    service_credit_keywords = [
-        "service credit",
-        "credit",
-        "compensation",
-        "refund",
-        "claim refund",
+    service_credit = [
+        "service credit", "credit eligibility", "eligible for credit",
+        "eligible for compensation", "claim compensation",
+        "request compensation", "claim refund", "request a refund",
         "delivery compensation"
     ]
-
-    if any(keyword in query_lower for keyword in service_credit_keywords):
+    if any(k in q for k in service_credit):
         return "service_credit"
 
-    # Escalation workflow
-    escalation_keywords = [
-        "priority",
-        "escalation",
-        "escalate",
-        "severity",
-        "urgent",
-        "p1",
-        "sla",
-        "critical",
-        "high priority"
+    escalation_actions = [
+        "escalate ticket", "escalate my ticket", "escalate my issue",
+        "escalate this issue", "escalate this ticket",
+        "i want to escalate", "please escalate", "raise an escalation",
+        "raise escalation", "create an escalation", "create escalation",
+        "submit an escalation", "submit escalation",
+        "mark as urgent", "mark this as priority"
     ]
-
-    if any(keyword in query_lower for keyword in escalation_keywords):
+    if any(k in q for k in escalation_actions):
         return "escalation"
 
-    # Ticket workflow
-    ticket_keywords = [
-        "ticket",
-        "support request",
-        "support case",
-        "case status",
-        "issue status"
+    # Information requests about policies should use RAG, not create actions.
+    policy_terms = [
+        "policy", "policies", "sla", "sop", "terms and conditions",
+        "escalation process", "cancellation rules", "refund rules",
+        "service credit rules"
     ]
+    if any(k in q for k in policy_terms):
+        return "general"
 
-    if any(keyword in query_lower for keyword in ticket_keywords):
+    if any(k in q for k in ["ticket status", "check ticket", "ticket details",
+                            "support request status", "support case",
+                            "case status", "issue status"]):
         return "ticket"
 
-    # Order / parcel workflow
-    order_keywords = [
-        "order",
-        "parcel",
-        "shipment",
-        "delivery",
-        "where is my parcel",
-        "where is my order",
-        "tracking",
-        "pickup"
-    ]
-
-    if any(keyword in query_lower for keyword in order_keywords):
+    if any(k in q for k in ["order", "parcel", "shipment", "delivery",
+                            "tracking", "pickup"]):
         return "order"
 
-    # Account workflow
-    account_keywords = [
-        "account",
-        "my plan",
-        "support available",
-        "premium support",
-        "account status"
-    ]
-
-    if any(keyword in query_lower for keyword in account_keywords):
+    if any(k in q for k in ["account", "my plan", "support available",
+                            "premium support", "account status"]):
         return "account"
 
-    # Default workflow
     return "general"
-
