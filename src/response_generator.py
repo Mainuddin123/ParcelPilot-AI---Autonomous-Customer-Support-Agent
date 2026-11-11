@@ -27,6 +27,14 @@ def generate_fallback_response(
         {}
     )
 
+    # Do not infer a decision when an order identifier/data is missing.
+    if workflow in {"order", "cancellation", "service_credit"} and not order_data:
+        if workflow == "cancellation":
+            return "# Cancellation Verification\\n\\nPlease provide a valid Order ID so I can verify cancellation eligibility."
+        if workflow == "service_credit":
+            return "# Service Credit Verification\\n\\nPlease provide a valid Order ID so I can verify service-credit eligibility."
+        return "# Order Information\\n\\nPlease provide a valid Order ID so I can look up the order."
+
     service_credit_data = structured_data.get(
         "service_credit",
         {}
