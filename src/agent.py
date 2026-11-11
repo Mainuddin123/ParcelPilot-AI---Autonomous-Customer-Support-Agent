@@ -108,9 +108,9 @@ class ParcelPilotAgent:
                 return {
                     "query": query,
                     "answer": (
-                        f"{heading}\\n\\n{intro}\\n\\n"
-                        f"- **Escalation ID:** {result['escalation_id']}\\n"
-                        f"- **Ticket ID:** {result['ticket_id']}\\n"
+                        f"{heading}\n\n{intro}\n\n"
+                        f"- **Escalation ID:** {result['escalation_id']}\n"
+                        f"- **Ticket ID:** {result['ticket_id']}\n"
                         f"- **Status:** {result['status']}"
                     ),
                     "structured_data": {
