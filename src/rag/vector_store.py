@@ -118,17 +118,31 @@ class VectorStore:
             collection = self.client.get_collection(name=COLLECTION_NAME)
         except Exception as exc:
             not_found = getattr(chromadb.errors, "NotFoundError", ())
-            if not_found and isinstance(exc, not_found):
+            missing_collection = (
+                (bool(not_found) and isinstance(exc, not_found))
+                or "does not exist" in str(exc).lower()
+                or "not found" in str(exc).lower()
+            )
+            if not missing_collection:
+                raise
+
+            # Community Cloud starts with a clean, ephemeral filesystem.
+            # Build the small knowledge-base index from committed source PDFs
+            # on first RAG use instead of requiring a local ChromaDB folder.
+            print("ChromaDB collection not found; building it from source PDFs...")
+            from src.rag.document_loader import load_documents
+            from src.rag.chunking import chunk_documents
+
+            documents = load_documents()
+            chunks = chunk_documents(documents)
+            if not chunks:
                 raise FileNotFoundError(
-                    "ChromaDB collection not found. Run "
-                    "'python build_vector_store.py' first."
+                    "No source PDF text was found. Check data/documents "
+                    "and DOCUMENT_METADATA."
                 ) from exc
-            if "does not exist" in str(exc).lower() or "not found" in str(exc).lower():
-                raise FileNotFoundError(
-                    "ChromaDB collection not found. Run "
-                    "'python build_vector_store.py' first."
-                ) from exc
-            raise
+
+            self.build(chunks)
+            return
 
         count = collection.count()
         if count == 0:
