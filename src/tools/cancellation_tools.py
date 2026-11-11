@@ -25,6 +25,7 @@ def check_cancellation(order_id: str):
     if order["status"] == "DELIVERED":
         return {
             "found": True,
+            "allowed": False,
             "can_cancel": False,
             "reason": "The shipment has already been delivered.",
             "order": order
@@ -53,8 +54,9 @@ def check_cancellation(order_id: str):
 
     return {
         "found": True,
+        "allowed": True,
         "can_cancel": True,
-        "reason": "Shipment has not been picked up. Cancellation can be evaluated according to the applicable agreement and SOP.",
+        "reason": "The shipment is still BOOKED and pickup has not been recorded. Under the Northstar Logistics customer-specific agreement shown for this account, cancellation before pickup is permitted without a cancellation fee.",
         "order_id": order_id,
         "account_id": order["account_id"],
         "cancellation_requested_at": request_time.strftime(
