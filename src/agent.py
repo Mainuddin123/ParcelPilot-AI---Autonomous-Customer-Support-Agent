@@ -1,3 +1,6 @@
+from functools import lru_cache
+import uuid
+
 from src.rag.retriever import Retriever
 from src.workflow import detect_workflow
 
@@ -14,6 +17,12 @@ from src.escalation_action import create_escalation
 from src.response_generator import generate_response, generate_fallback_response
 from src.guardrails import validate_input
 from src.tracing import traced
+
+
+@lru_cache(maxsize=1)
+def _get_shared_retriever():
+    """Load the read-only RAG stack once per Python process."""
+    return Retriever()
 
 
 class ParcelPilotAgent:
@@ -59,9 +68,29 @@ class ParcelPilotAgent:
 
                 pending = self.pending_escalation
 
+                # Revalidate ticket ownership immediately before the side effect.
+                ticket_check = lookup_ticket(
+                    ticket_id=pending["ticket_id"],
+                    account_id=pending.get("account_id")
+                )
+                if not ticket_check.get("found"):
+                    self.pending_escalation = None
+                    return {
+                        "query": query,
+                        "answer": (
+                            "# Escalation Not Created\n\n"
+                            "The ticket could not be revalidated for this account. "
+                            "No escalation was created."
+                        ),
+                        "structured_data": {"workflow": "escalation"},
+                        "citations": [],
+                        "status": "validation_failed"
+                    }
+
                 result = create_escalation(
                     ticket_id=pending["ticket_id"],
-                    reason=pending["reason"]
+                    reason=pending["reason"],
+                    idempotency_key=pending["idempotency_key"]
                 )
 
                 self.pending_escalation = None
@@ -291,8 +320,10 @@ class ParcelPilotAgent:
 
             # VALID TICKET -> STORE PENDING ESCALATION
             self.pending_escalation = {
-                "ticket_id": ticket_id,
-                "reason": query
+                "ticket_id": ticket_id.strip().upper(),
+                "account_id": account_id.strip().upper() if account_id else None,
+                "reason": query,
+                "idempotency_key": str(uuid.uuid4())
             }
 
             return {
@@ -331,7 +362,7 @@ class ParcelPilotAgent:
         # retriever attribute was introduced. getattr keeps that instance safe.
         retriever = getattr(self, "retriever", None)
         if retriever is None:
-            retriever = Retriever()
+            retriever = _get_shared_retriever()
             self.retriever = retriever
 
         results = retriever.retrieve(
