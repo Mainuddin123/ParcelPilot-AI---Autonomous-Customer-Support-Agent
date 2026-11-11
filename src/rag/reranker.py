@@ -1,10 +1,12 @@
-from sentence_transformers import CrossEncoder
-
-
 class CrossEncoderReranker:
-    """Rerank query-document pairs using a cross-encoder model."""
+    """Rerank query-document pairs using a cross-encoder model.
+
+    The model is loaded lazily so optional reranking dependency/model
+    failures do not prevent the base retrieval pipeline from starting.
+    """
 
     def __init__(self, model_name="cross-encoder/ms-marco-MiniLM-L-6-v2"):
+        from sentence_transformers import CrossEncoder
         self.model = CrossEncoder(model_name)
 
     def rerank(self, query, documents, top_k=5):
