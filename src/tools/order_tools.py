@@ -73,6 +73,7 @@ def lookup_order(
             "message": "An Account ID is required to verify order ownership."
         }
 
+    account_id = str(account_id).strip().upper()
     order = data.get_order(order_id)
 
     if order is None:
