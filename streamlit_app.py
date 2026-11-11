@@ -183,16 +183,63 @@ st.markdown(
 --------------------------------------------------------- */
 
 .app-title {
-    font-size: 38px;
-    font-weight: 700;
-    color: #111827;
-    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: fit-content;
+    font-size: clamp(32px, 4vw, 42px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.15;
+    margin-bottom: 9px;
+}
+
+.app-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88em;
+    filter: drop-shadow(0 4px 8px rgba(99, 102, 241, 0.16));
+}
+
+.app-title-text {
+    background: linear-gradient(
+        100deg,
+        #6D28D9 0%,
+        #2563EB 18%,
+        #0891B2 36%,
+        #059669 52%,
+        #D97706 70%,
+        #DB2777 86%,
+        #6D28D9 100%
+    );
+    background-size: 300% 100%;
+    background-position: 0% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: parcelpilot-gradient-flow 9s ease-in-out infinite;
+}
+
+@keyframes parcelpilot-gradient-flow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
 }
 
 .app-subtitle {
-    color: #6B7280;
-    font-size: 16px;
-    margin-bottom: 30px;
+    color: #64748B;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+    margin: 0 0 30px 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-title-text {
+        animation: none;
+        background-position: 50% 50%;
+    }
 }
 
 
@@ -403,7 +450,8 @@ with st.sidebar:
 st.markdown(
     """
     <div class="app-title">
-        📦 ParcelPilot AI
+        <span class="app-title-icon">📦</span>
+        <span class="app-title-text">ParcelPilot AI</span>
     </div>
 
     <div class="app-subtitle">
