@@ -43,6 +43,8 @@ def create_escalation(ticket_id, reason, idempotency_key=None):
     connection = _connect()
     try:
         with connection:
+            # Acquire the write reservation before checking uniqueness.
+            connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT * FROM escalations WHERE ticket_id = ? OR idempotency_key = ?",
                 (normalized_ticket, request_key),
