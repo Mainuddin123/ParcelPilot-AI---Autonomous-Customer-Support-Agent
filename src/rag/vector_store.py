@@ -1,10 +1,17 @@
 import pickle
+from functools import lru_cache
 
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from src.config import STORAGE_DIR
+
+
+@lru_cache(maxsize=1)
+def get_embedding_model():
+    """Reuse the embedding model across chat sessions in this process."""
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
 
 class VectorStore:
@@ -17,9 +24,7 @@ class VectorStore:
 
     def __init__(self):
 
-        self.model = SentenceTransformer(
-            "all-MiniLM-L6-v2"
-        )
+        self.model = get_embedding_model()
 
         self.index = None
         self.chunks = []
