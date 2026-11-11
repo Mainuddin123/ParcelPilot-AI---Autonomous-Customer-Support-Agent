@@ -24,3 +24,9 @@ Thumbs.db
 # Local escalation persistence
 storage/*.sqlite3
 storage/*.db
+
+# ChromaDB generated database
+storage/chroma_db/
+
+# Python test cache
+.pytest_cache/

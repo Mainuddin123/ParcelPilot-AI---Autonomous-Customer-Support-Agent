@@ -1,20 +1,32 @@
+
 def chunk_documents(documents, chunk_size=500, overlap=100):
     """
     Split document text into overlapping chunks
-    while preserving the original metadata.
+    while preserving original metadata.
     """
 
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than zero.")
+
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError(
+            "overlap must be non-negative and smaller than chunk_size."
+        )
+
     chunks = []
+    step = chunk_size - overlap
 
     for document in documents:
-        text = document["text"]
+        text = document.get("text", "")
 
-        start = 0
+        if not text.strip():
+            continue
 
-        while start < len(text):
-            end = start + chunk_size
+        for start in range(0, len(text), step):
+            chunk_text = text[start:start + chunk_size]
 
-            chunk_text = text[start:end]
+            if not chunk_text.strip():
+                continue
 
             chunk = {
                 **document,
@@ -22,7 +34,5 @@ def chunk_documents(documents, chunk_size=500, overlap=100):
             }
 
             chunks.append(chunk)
-
-            start += chunk_size - overlap
 
     return chunks

@@ -301,8 +301,7 @@ def test_retrieval_exception_returns_safe_fallback(monkeypatch):
     assert "retrieval is temporarily unavailable" in result["answer"].lower()
     assert result["citations"] == []
 
-
-def test_faiss_search_uses_bounded_initial_candidates(monkeypatch):
+def test_chromadb_search_uses_bounded_initial_candidates():
     import numpy as np
     from src.rag import vector_store as module
 
@@ -310,35 +309,37 @@ def test_faiss_search_uses_bounded_initial_candidates(monkeypatch):
         def encode(self, texts, **kwargs):
             return np.ones((1, 3), dtype="float32")
 
-    class FakeIndex:
+    class FakeCollection:
         def __init__(self):
-            self.last_k = None
+            self.requested_k = []
 
-        def search(self, query_embedding, k):
-            self.last_k = k
-            return (
-                np.arange(k, 0, -1, dtype="float32").reshape(1, -1),
-                np.arange(k, dtype="int64").reshape(1, -1),
-            )
+        def count(self):
+            return 100
+
+        def query(self, query_embeddings, n_results, include):
+            self.requested_k.append(n_results)
+            return {
+                "documents": [[f"document {i}" for i in range(n_results)]],
+                "metadatas": [[{
+                    "source": "policy.pdf", "page": i + 1,
+                    "source_type": "current_policy", "status": "current"
+                } for i in range(n_results)]],
+                "distances": [[0.1 + i * 0.01 for i in range(n_results)]]
+            }
 
     store = module.VectorStore.__new__(module.VectorStore)
     store.model = FakeModel()
-    store.index = FakeIndex()
-    store.chunks = [
-        {"text": f"document {i}", "source": "policy.pdf", "page": i + 1,
-         "source_type": "current_policy", "status": "current"}
-        for i in range(100)
-    ]
-    monkeypatch.setattr(module.faiss, "normalize_L2", lambda values: None)
+    store.collection = FakeCollection()
+    store.chunks = []
 
     results = store.search("policy query", top_k=2)
 
     assert len(results) == 2
-    assert store.index.last_k == 8
-    assert store.index.last_k < len(store.chunks)
+    assert store.collection.requested_k == [8]
+    assert store.collection.requested_k[0] < 100
 
 
-def test_faiss_search_expands_candidates_for_account_filter(monkeypatch):
+def test_chromadb_search_expands_candidates_for_account_filter():
     import numpy as np
     from src.rag import vector_store as module
 
@@ -346,30 +347,113 @@ def test_faiss_search_expands_candidates_for_account_filter(monkeypatch):
         def encode(self, texts, **kwargs):
             return np.ones((1, 3), dtype="float32")
 
-    class FakeIndex:
+    class FakeCollection:
         def __init__(self):
             self.requested_k = []
 
-        def search(self, query_embedding, k):
-            self.requested_k.append(k)
-            return (
-                np.arange(k, 0, -1, dtype="float32").reshape(1, -1),
-                np.arange(k, dtype="int64").reshape(1, -1),
-            )
+        def count(self):
+            return 100
+
+        def query(self, query_embeddings, n_results, include):
+            self.requested_k.append(n_results)
+            return {
+                "documents": [[f"agreement {i}" for i in range(n_results)]],
+                "metadatas": [[{
+                    "source": "agreement.pdf", "page": i + 1,
+                    "source_type": "customer_agreement", "status": "current",
+                    "account_id": "ACCT-002" if i < 8 else "ACCT-001"
+                } for i in range(n_results)]],
+                "distances": [[0.1 + i * 0.01 for i in range(n_results)]]
+            }
 
     store = module.VectorStore.__new__(module.VectorStore)
     store.model = FakeModel()
-    store.index = FakeIndex()
-    store.chunks = [
-        {"text": f"agreement {i}", "source": "agreement.pdf", "page": i + 1,
-         "source_type": "customer_agreement", "status": "current",
-         "account_id": "ACCT-002" if i < 8 else "ACCT-001"}
-        for i in range(100)
-    ]
-    monkeypatch.setattr(module.faiss, "normalize_L2", lambda values: None)
+    store.collection = FakeCollection()
+    store.chunks = []
 
     results = store.search("agreement query", top_k=2, account_id="ACCT-001")
 
     assert len(results) == 2
     assert all(item["account_id"] == "ACCT-001" for item in results)
-    assert store.index.requested_k == [8, 16]
+    assert store.collection.requested_k == [8, 16]
+
+
+def test_chromadb_search_excludes_deprecated_documents():
+    import numpy as np
+    from src.rag import vector_store as module
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            return np.ones((1, 3), dtype="float32")
+
+    class FakeCollection:
+        def count(self):
+            return 3
+
+        def query(self, **kwargs):
+            return {
+                "documents": [["Deprecated policy", "Current policy", "Archived policy"]],
+                "metadatas": [[
+                    {"source_type": "deprecated", "status": "deprecated"},
+                    {"source_type": "current_policy", "status": "current"},
+                    {"source_type": "current_policy", "status": "archived"}
+                ]],
+                "distances": [[0.1, 0.2, 0.3]]
+            }
+
+    store = module.VectorStore.__new__(module.VectorStore)
+    store.model = FakeModel()
+    store.collection = FakeCollection()
+    store.chunks = []
+
+    results = store.search("policy", top_k=3)
+
+    assert len(results) == 1
+    assert results[0]["text"] == "Current policy"
+
+
+def test_chromadb_search_converts_cosine_distance_to_similarity():
+    import numpy as np
+    from src.rag import vector_store as module
+
+    class FakeModel:
+        def encode(self, texts, **kwargs):
+            return np.ones((1, 3), dtype="float32")
+
+    class FakeCollection:
+        def count(self):
+            return 1
+
+        def query(self, **kwargs):
+            return {
+                "documents": [["Cancellation policy"]],
+                "metadatas": [[{
+                    "source": "policy.pdf",
+                    "source_type": "current_policy",
+                    "status": "current"
+                }]],
+                "distances": [[0.2]]
+            }
+
+    store = module.VectorStore.__new__(module.VectorStore)
+    store.model = FakeModel()
+    store.collection = FakeCollection()
+    store.chunks = []
+
+    results = store.search("cancellation", top_k=1)
+
+    assert len(results) == 1
+    assert abs(results[0]["score"] - 0.8) < 1e-6
+
+
+def test_chromadb_search_returns_empty_for_blank_query():
+    from src.rag import vector_store as module
+
+    class FakeCollection:
+        def count(self):
+            raise AssertionError("Blank query should not access ChromaDB.")
+
+    store = module.VectorStore.__new__(module.VectorStore)
+    store.collection = FakeCollection()
+
+    assert store.search("   ", top_k=3) == []

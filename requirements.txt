@@ -1,10 +1,13 @@
+
 streamlit
+fastapi
+uvicorn
 python-dotenv
 pydantic
 google-genai
 pandas
 numpy
-faiss-cpu
+chromadb>=0.5.23,<2.0
 sentence-transformers
 rank-bm25
 langsmith
