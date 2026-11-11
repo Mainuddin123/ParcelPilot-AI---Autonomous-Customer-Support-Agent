@@ -327,19 +327,23 @@ class ParcelPilotAgent:
         # =========================================
         # DOCUMENT RETRIEVAL (LAZY INITIALIZATION)
         # =========================================
-        if self.retriever is None:
-            self.retriever = Retriever()
+        # Streamlit may retain an agent instance created before the lazy
+        # retriever attribute was introduced. getattr keeps that instance safe.
+        retriever = getattr(self, "retriever", None)
+        if retriever is None:
+            retriever = Retriever()
+            self.retriever = retriever
 
-        results = self.retriever.retrieve(
+        results = retriever.retrieve(
             query=query,
             account_id=account_id
         )
 
-        context = self.retriever.format_context(
+        context = retriever.format_context(
             results
         )
 
-        citations = self.retriever.get_citations(
+        citations = retriever.get_citations(
             results
         )
 
