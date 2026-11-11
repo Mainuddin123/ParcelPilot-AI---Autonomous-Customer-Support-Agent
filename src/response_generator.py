@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from src.llm import GeminiLLM
 from src.guardrails import validate_output
 from src.tracing import traced
@@ -272,6 +274,12 @@ This response is based on the available structured account data."""
     )
 
 
+@lru_cache(maxsize=1)
+def _get_shared_llm():
+    """Reuse the Gemini client instead of recreating it for every request."""
+    return GeminiLLM()
+
+
 @traced(name="parcelpilot.response_generation")
 def generate_response(
     query,
@@ -279,7 +287,7 @@ def generate_response(
     context,
     citations
 ):
-    llm = GeminiLLM()
+    llm = _get_shared_llm()
 
     prompt = f"""
 You are ParcelPilot AI, a customer support decision assistant.
