@@ -268,7 +268,7 @@ This allows core workflows such as order lookup, cancellation evaluation, servic
 | Pandas | Structured data processing |
 | LangChain | LLM and RAG integration |
 | LangGraph | Workflow orchestration |
-| FAISS | Vector similarity search |
+| FAISS | Dense vector retrieval |\n| BM25 | Sparse keyword retrieval |\n| Reciprocal Rank Fusion | Hybrid ranking fusion |\n| Cross-Encoder | Retrieved-document reranking |\n| LangSmith | LLM and retrieval tracing |
 | Sentence Transformers | Text embeddings |
 | Google Gemini | AI response generation |
 | PyPDF | PDF document processing |
@@ -336,7 +336,7 @@ GOOGLE_API_KEY=your_google_api_key
 streamlit run streamlit_app.py
 ```
 
-### Run the Terminal Application
+### Optional API Layer\n\nThe FastAPI module remains available for separate API experiments, but the Streamlit application does not depend on it.\n\n### Run the Terminal Application
 
 ```bash
 python main.py
