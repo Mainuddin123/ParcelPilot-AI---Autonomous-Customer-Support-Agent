@@ -1,5 +1,7 @@
 import streamlit as st
 import uuid
+import time
+import html
 
 from src.agent import ParcelPilotAgent
 
@@ -466,7 +468,7 @@ for message in st.session_state.messages:
             f"""
 <div class="user-box">
 <b>You</b><br><br>
-{content}
+{html.escape(str(content))}
 </div>
 """,
             unsafe_allow_html=True
@@ -500,6 +502,10 @@ for message in st.session_state.messages:
             st.caption(
                 f"Workflow used: `{workflow}`"
             )
+
+        latency_ms = message.get("latency_ms")
+        if latency_ms is not None:
+            st.caption(f"Response time: {latency_ms} ms")
 
         status = message.get(
             "status"
@@ -612,6 +618,7 @@ if query:
         # -------------------------------------------------
 
         try:
+            started_at = time.perf_counter()
             with st.spinner(
                 "ParcelPilot AI is analyzing your request..."
             ):
@@ -626,6 +633,7 @@ if query:
                     order_id=order_id.strip() or None,
                     ticket_id=ticket_id.strip() or None
                 )
+            latency_ms = round((time.perf_counter() - started_at) * 1000, 1)
 
             answer = data.get("answer", "No response was generated.")
             structured_data = data.get("structured_data", {})
@@ -639,7 +647,8 @@ if query:
                     "content": answer,
                     "workflow": workflow,
                     "citations": citations,
-                    "status": status
+                    "status": status,
+                    "latency_ms": latency_ms
                 }
             )
 
