@@ -23,7 +23,13 @@ class Retriever:
         self.vector_store.load()
         self.candidate_k = candidate_k
         self.rrf_k = rrf_k
-        self.reranker = CrossEncoderReranker() if enable_reranking else None
+        self.reranker = None
+        if enable_reranking:
+            try:
+                self.reranker = CrossEncoderReranker()
+            except Exception as error:
+                # Preserve retrieval availability if the optional model cannot load.
+                print(f"Reranker unavailable; using RRF ranking only: {error}")
         self._chunks = list(self.vector_store.chunks)
         tokenized = [self._tokenize(c.get("text", "")) for c in self._chunks]
         self.bm25 = BM25Okapi(tokenized) if tokenized else None
