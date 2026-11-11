@@ -321,7 +321,7 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```env
-GOOGLE_API_KEY=your_google_api_key
+GEMINI_API_KEY=your_gemini_api_key\n\nLANGSMITH_TRACING=true\nLANGSMITH_TRACING_V2=true\nLANGSMITH_API_KEY=your_langsmith_api_key\nLANGSMITH_PROJECT=parcelpilot-ai\nLANGSMITH_HIDE_INPUTS=true\nLANGSMITH_HIDE_OUTPUTS=true
 ```
 
 > ⚠️ Do not commit your API keys or `.env` file to GitHub.
