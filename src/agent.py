@@ -189,15 +189,15 @@ class ParcelPilotAgent:
         )
         requested_accounts = {
             value.upper()
-            for value in re.findall(r"\\bACCT-\\d+\\b", query, flags=re.IGNORECASE)
+            for value in re.findall(r"\bACCT-\d+\b", query, flags=re.IGNORECASE)
         }
         other_accounts = sorted(
             value for value in requested_accounts
             if value != selected_account
         )
         bulk_customer_request = bool(re.search(
-            r"\\b(all|every)\\s+(customer|customers|customer accounts|accounts)\\b"
-            r"|\\b(all customers'?(?: private)? (?:data|records|agreements|shipments))\\b",
+            r"\b(all|every)\s+(customer|customers|customer accounts|accounts)\b"
+            r"|\b(all customers'?(?: private)? (?:data|records|agreements|shipments))\b",
             query,
             flags=re.IGNORECASE,
         ))
