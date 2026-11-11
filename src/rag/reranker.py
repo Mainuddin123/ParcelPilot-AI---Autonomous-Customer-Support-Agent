@@ -1,4 +1,5 @@
 from functools import lru_cache
+from src.tracing import traced
 
 
 @lru_cache(maxsize=1)
@@ -17,11 +18,12 @@ class CrossEncoderReranker:
     def __init__(self, model_name="cross-encoder/ms-marco-MiniLM-L-6-v2"):
         self.model = _load_cross_encoder(model_name)
 
+    @traced(name="parcelpilot.cross_encoder_reranking")
     def rerank(self, query, documents, top_k=5):
         if not documents:
             return []
         pairs = [(query, str(doc.get("text", ""))) for doc in documents]
-        scores = self.model.predict(pairs, show_progress_bar=False)
+        scores = self.model.predict(pairs, batch_size=32, show_progress_bar=False)
         ranked = []
         for doc, score in zip(documents, scores):
             item = dict(doc)
