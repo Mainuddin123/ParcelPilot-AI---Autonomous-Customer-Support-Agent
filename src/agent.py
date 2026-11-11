@@ -161,6 +161,19 @@ class ParcelPilotAgent:
                 "status": "pending_confirmation"
             }
 
+        # Do not interpret an orphaned Yes/No as a new RAG question or action.
+        if query_lower in {"yes", "y", "confirm", "confirmed", "no", "n", "cancel", "cancel escalation"}:
+            return {
+                "query": query,
+                "answer": (
+                    "There is no pending escalation confirmation. "
+                    "Please submit a new escalation request if you need one."
+                ),
+                "structured_data": {"workflow": "escalation"},
+                "citations": [],
+                "status": "no_pending_confirmation"
+            }
+
         # =========================================
         # NORMAL WORKFLOW DETECTION
         # =========================================
