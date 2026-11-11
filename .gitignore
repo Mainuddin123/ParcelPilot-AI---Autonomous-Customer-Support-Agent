@@ -21,3 +21,6 @@ Thumbs.db
 
 # Logs
 *.log
+# Local escalation persistence
+storage/*.sqlite3
+storage/*.db
