@@ -14,14 +14,27 @@ class GeminiLLM:
 
     def __init__(self):
 
-        api_key = os.getenv("GEMINI_API_KEY")
+        # Streamlit Community Cloud stores credentials in st.secrets;
+        # local development continues to use environment variables / .env.
+        try:
+            import streamlit as st
+            secret_api_key = st.secrets.get("GEMINI_API_KEY", "")
+            secret_timeout = st.secrets.get("GEMINI_TIMEOUT_MS", "20000")
+        except Exception:
+            secret_api_key = ""
+            secret_timeout = "20000"
+
+        api_key = os.getenv("GEMINI_API_KEY") or secret_api_key
 
         if not api_key:
             raise ValueError(
-                "GEMINI_API_KEY not found in .env file"
+                "GEMINI_API_KEY is missing. Configure it in the environment "
+                "or Streamlit Community Cloud app secrets."
             )
 
-        timeout_ms = int(os.getenv("GEMINI_TIMEOUT_MS", "20000"))
+        timeout_ms = int(
+            os.getenv("GEMINI_TIMEOUT_MS") or secret_timeout
+        )
         self.client = genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(timeout=timeout_ms)
