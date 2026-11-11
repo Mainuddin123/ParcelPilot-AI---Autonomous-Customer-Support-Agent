@@ -44,6 +44,7 @@ class Retriever:
             return bool(account_id) and chunk.get("account_id") == account_id
         return True
 
+    @traced(name="parcelpilot.bm25_search")
     def _bm25_search(self, query, account_id):
         if self.bm25 is None:
             return []
@@ -103,6 +104,7 @@ class Retriever:
 
         return candidates[:top_k]
 
+    @traced(name="parcelpilot.context_formatting")
     def format_context(self, results):
         if not results:
             return "No relevant documents found."
