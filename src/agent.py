@@ -15,7 +15,7 @@ from src.tools.order_tools import (
 
 from src.escalation_action import create_escalation
 from src.response_generator import generate_response, generate_fallback_response
-from src.guardrails import validate_input
+from src.guardrails import validate_input, validate_output
 from src.tracing import traced
 
 
@@ -95,17 +95,23 @@ class ParcelPilotAgent:
 
                 self.pending_escalation = None
 
+                heading = (
+                    "# Escalation Already Exists"
+                    if result.get("already_exists")
+                    else "# Escalation Created"
+                )
+                intro = (
+                    "An escalation is already recorded for this ticket."
+                    if result.get("already_exists")
+                    else "The escalation has been created successfully."
+                )
                 return {
                     "query": query,
                     "answer": (
-                        "# Escalation Created\n\n"
-                        "The escalation has been created successfully.\n\n"
-                        f"- **Escalation ID:** "
-                        f"{result['escalation_id']}\n"
-                        f"- **Ticket ID:** "
-                        f"{result['ticket_id']}\n"
-                        f"- **Status:** "
-                        f"{result['status']}"
+                        f"{heading}\\n\\n{intro}\\n\\n"
+                        f"- **Escalation ID:** {result['escalation_id']}\\n"
+                        f"- **Ticket ID:** {result['ticket_id']}\\n"
+                        f"- **Status:** {result['status']}"
                     ),
                     "structured_data": {
                         "workflow": "escalation",
@@ -347,44 +353,52 @@ class ParcelPilotAgent:
         # records/tools. Do not initialize retrieval models or call Gemini.
         if workflow in {"order", "cancellation", "service_credit", "account"}:
             answer = generate_fallback_response(query, context_data)
+            output_ok, safe_answer = validate_output(answer)
             return {
                 "query": query,
-                "answer": answer,
+                "answer": safe_answer if not output_ok else answer,
                 "structured_data": context_data,
                 "citations": [],
-                "status": "success"
+                "status": "fallback_response" if output_ok else "blocked_output"
             }
 
         # =========================================
         # DOCUMENT RETRIEVAL (LAZY INITIALIZATION)
         # =========================================
-        # Streamlit may retain an agent instance created before the lazy
-        # retriever attribute was introduced. getattr keeps that instance safe.
-        retriever = getattr(self, "retriever", None)
-        if retriever is None:
-            retriever = _get_shared_retriever()
-            self.retriever = retriever
+        try:
+            retriever = getattr(self, "retriever", None)
+            if retriever is None:
+                retriever = _get_shared_retriever()
+                self.retriever = retriever
 
-        results = retriever.retrieve(
-            query=query,
-            account_id=account_id
-        )
+            results = retriever.retrieve(
+                query=query,
+                account_id=account_id
+            )
+            context = retriever.format_context(results)
+            citations = retriever.get_citations(results)
 
-        context = retriever.format_context(
-            results
-        )
+            return generate_response(
+                query=query,
+                structured_data=context_data,
+                context=context,
+                citations=citations
+            )
 
-        citations = retriever.get_citations(
-            results
-        )
-
-        # =========================================
-        # GENERATE FINAL RESPONSE
-        # =========================================
-
-        return generate_response(
-            query=query,
-            structured_data=context_data,
-            context=context,
-            citations=citations
-        )
+        except Exception as error:
+            # Keep the chat available if retrieval or model loading fails.
+            print(f"ParcelPilot retrieval fallback: {error}")
+            answer = generate_fallback_response(query, context_data)
+            answer += (
+                "\n\n**Note:** Policy-document retrieval is temporarily "
+                "unavailable. This response uses only available structured "
+                "records; retry later for document-based policy details."
+            )
+            output_ok, safe_answer = validate_output(answer)
+            return {
+                "query": query,
+                "answer": safe_answer if not output_ok else answer,
+                "structured_data": context_data,
+                "citations": [],
+                "status": "fallback_response" if output_ok else "blocked_output"
+            }
