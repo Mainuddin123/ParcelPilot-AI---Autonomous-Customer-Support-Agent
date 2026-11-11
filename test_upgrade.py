@@ -62,3 +62,38 @@ def test_legacy_agent_instance_lazily_initializes_retriever():
     factory.assert_called_once()
     assert result == {"answer": "Policy answer"}
     assert isinstance(agent.retriever, DummyRetriever)
+
+
+def test_cancellation_response_accepts_can_cancel_field():
+    from src.response_generator import generate_fallback_response
+
+    answer = generate_fallback_response(
+        "Can I cancel ORD-1001 without a fee?",
+        {
+            "workflow": "cancellation",
+            "order": {"found": True, "order": {"order_id": "ORD-1001"}},
+            "cancellation": {
+                "can_cancel": True,
+                "reason": "Shipment is BOOKED and has not been picked up."
+            }
+        }
+    )
+    assert "eligible for cancellation" in answer.lower()
+    assert "not eligible" not in answer.lower()
+
+
+def test_cancellation_response_denies_when_can_cancel_false():
+    from src.response_generator import generate_fallback_response
+
+    answer = generate_fallback_response(
+        "Can I cancel ORD-1001?",
+        {
+            "workflow": "cancellation",
+            "order": {"found": True, "order": {"order_id": "ORD-1001"}},
+            "cancellation": {
+                "can_cancel": False,
+                "reason": "Shipment has already been delivered."
+            }
+        }
+    )
+    assert "not eligible for cancellation" in answer.lower()
