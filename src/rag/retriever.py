@@ -19,6 +19,7 @@ class Retriever:
         "general_document": 1,
     }
 
+    @traced(name="parcelpilot.retriever_and_bm25_initialization")
     def __init__(self, candidate_k=20, rrf_k=60, enable_reranking=True):
         self.vector_store = VectorStore()
         self.vector_store.load()
