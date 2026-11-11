@@ -1,4 +1,5 @@
 from functools import lru_cache
+import re
 import uuid
 
 from src.workflow import detect_workflow
@@ -174,6 +175,57 @@ class ParcelPilotAgent:
                 "structured_data": {"workflow": "escalation"},
                 "citations": [],
                 "status": "no_pending_confirmation"
+            }
+
+        # =========================================
+        # CROSS-ACCOUNT ACCESS CONTROL
+        # =========================================
+        # The account selected in the sidebar is the scope for this request.
+        # Never let an explicit request for another account fall through to
+        # generic order/shipment intent detection or RAG.
+        selected_account = (
+            str(account_id).strip().upper()
+            if account_id else None
+        )
+        requested_accounts = {
+            value.upper()
+            for value in re.findall(r"\\bACCT-\\d+\\b", query, flags=re.IGNORECASE)
+        }
+        other_accounts = sorted(
+            value for value in requested_accounts
+            if value != selected_account
+        )
+        bulk_customer_request = bool(re.search(
+            r"\\b(all|every)\\s+(customer|customers|customer accounts|accounts)\\b"
+            r"|\\b(all customers'?(?: private)? (?:data|records|agreements|shipments))\\b",
+            query,
+            flags=re.IGNORECASE,
+        ))
+
+        if other_accounts or bulk_customer_request:
+            scope_message = (
+                f" The active account scope is **{selected_account}**."
+                if selected_account else
+                " Select a valid customer account before requesting account-specific information."
+            )
+            return {
+                "query": query,
+                "answer": (
+                    "# Access Restricted\\n\\n"
+                    "I can only retrieve customer agreements, orders, and shipment "
+                    "records within the currently selected account. I cannot access "
+                    "private records belonging to another customer or enumerate all customers."
+                    + scope_message
+                    + "\\n\\nNo cross-account data was retrieved or disclosed."
+                ),
+                "structured_data": {
+                    "workflow": "access_control",
+                    "status": "blocked",
+                    "selected_account": selected_account,
+                    "requested_other_accounts": len(other_accounts),
+                },
+                "citations": [],
+                "status": "blocked_access"
             }
 
         # =========================================
