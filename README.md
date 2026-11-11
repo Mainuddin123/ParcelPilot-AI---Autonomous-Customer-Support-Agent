@@ -174,6 +174,39 @@ I want to escalate this issue.
 
 ---
 
+## 🔎 Advanced RAG Pipeline
+
+The upgraded retrieval branch implements:
+- Dense semantic retrieval using FAISS
+- Sparse lexical retrieval using BM25
+- Reciprocal Rank Fusion (RRF)
+- Cross-Encoder reranking
+- Account-scoped customer-agreement filtering and inactive-document exclusion
+
+## 🛡️ Guardrails and Observability
+
+- Basic input validation and prompt-injection pattern checks
+- Output checks for empty, oversized, and obvious secret-bearing responses
+- LangSmith tracing for agent execution, retrieval, response generation, and Gemini calls
+- Retrieval evaluation script reporting Precision@K, Recall@K, MRR, and nDCG@K
+
+These checks are defense-in-depth measures, not a guarantee against all prompt injection or data leakage. Evaluation scores must be measured using reviewed relevance labels.
+
+Set these environment variables in your local environment or deployment secrets:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_PROJECT=parcelpilot-ai
+```
+
+Run retrieval evaluation after reviewing the relevant document IDs in `evaluation_dataset.json`:
+
+```bash
+python evaluate_rag.py
+```
+
 ## 🤖 RAG-Based Document Retrieval
 
 ParcelPilot AI uses Retrieval-Augmented Generation (RAG) to retrieve relevant information from support policies, SOPs, product documentation, and customer agreements.
