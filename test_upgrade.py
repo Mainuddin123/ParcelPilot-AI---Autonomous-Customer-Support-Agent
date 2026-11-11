@@ -509,7 +509,7 @@ def test_same_account_reference_is_not_blocked(monkeypatch):
     monkeypatch.setattr("src.agent.generate_fallback_response", lambda query, data: "Account details")
 
     result = ParcelPilotAgent().process(
-        "Show the customer agreement and shipment details for ACCT-001.",
+        "Show my account details for ACCT-001.",
         account_id="ACCT-001",
     )
 
