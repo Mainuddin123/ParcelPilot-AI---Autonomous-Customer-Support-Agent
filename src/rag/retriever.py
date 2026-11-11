@@ -1,4 +1,5 @@
 import re
+import threading
 from rank_bm25 import BM25Okapi
 
 from src.rag.vector_store import VectorStore
@@ -25,6 +26,7 @@ class Retriever:
         self.rrf_k = rrf_k
         self.reranker = None
         self.enable_reranking = enable_reranking
+        self._reranker_lock = threading.Lock()
         self._chunks = list(self.vector_store.chunks)
         tokenized = [self._tokenize(c.get("text", "")) for c in self._chunks]
         self.bm25 = BM25Okapi(tokenized) if tokenized else None
@@ -82,15 +84,23 @@ class Retriever:
         candidates.sort(key=lambda item: item["rrf_score"], reverse=True)
 
         if self.enable_reranking and self.reranker is None:
-            try:
-                self.reranker = CrossEncoderReranker()
-            except Exception as error:
-                # Keep hybrid retrieval available if model download/loading fails.
-                print(f"Reranker unavailable; using RRF ranking only: {error}")
-                self.enable_reranking = False
+            with self._reranker_lock:
+                if self.enable_reranking and self.reranker is None:
+                    try:
+                        self.reranker = CrossEncoderReranker()
+                    except Exception as error:
+                        print(f"Reranker unavailable; using RRF ranking only: {error}")
+                        self.enable_reranking = False
 
         if self.reranker is not None:
-            return self.reranker.rerank(query, candidates, top_k=top_k)
+            try:
+                return self.reranker.rerank(query, candidates, top_k=top_k)
+            except Exception as error:
+                # Preserve dense + BM25 + RRF results if inference fails.
+                print(f"Reranker prediction failed; using RRF ranking only: {error}")
+                self.reranker = None
+                self.enable_reranking = False
+
         return candidates[:top_k]
 
     def format_context(self, results):
