@@ -77,9 +77,11 @@ We could not verify cancellation eligibility because the order was not found or 
 
     if workflow == "cancellation":
 
+        # The cancellation tool historically returned "can_cancel".
+        # Accept that field while standardizing on "allowed".
         allowed = cancellation_data.get(
             "allowed",
-            False
+            cancellation_data.get("can_cancel", False)
         )
 
         message = cancellation_data.get(
