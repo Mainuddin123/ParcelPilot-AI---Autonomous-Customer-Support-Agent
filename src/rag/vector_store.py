@@ -9,6 +9,7 @@ from src.config import STORAGE_DIR
 from src.tracing import traced
 
 
+@traced(name="parcelpilot.embedding_model_load")
 @lru_cache(maxsize=1)
 def get_embedding_model():
     """Reuse the embedding model across chat sessions in this process."""
@@ -91,6 +92,7 @@ class VectorStore:
                 file
             )
 
+    @traced(name="parcelpilot.faiss_index_load")
     def load(self):
         """
         Load the saved FAISS index
