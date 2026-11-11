@@ -1,0 +1,17 @@
+[
+  {
+    "query": "What is the cancellation policy before pickup?",
+    "relevant_ids": ["03_Cancellation_and_Service_Credit_SOP_v4.pdf:1", "05_Northstar_Logistics_Enterprise_Agreement.pdf:1"],
+    "retrieved_ids": []
+  },
+  {
+    "query": "Am I eligible for service credit?",
+    "relevant_ids": ["03_Cancellation_and_Service_Credit_SOP_v4.pdf:1"],
+    "retrieved_ids": []
+  },
+  {
+    "query": "What does the escalation SLA say?",
+    "relevant_ids": ["01_Support_Policy_v3_CURRENT.pdf:1"],
+    "retrieved_ids": []
+  }
+]
