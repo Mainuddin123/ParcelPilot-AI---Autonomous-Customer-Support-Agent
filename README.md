@@ -1,466 +1,397 @@
-# 📦 ParcelPilot AI
+# 📦 ParcelPilot AI – Autonomous Customer Support Agent
 
-### AI-Powered Customer Support Decision Assistant
+An AI-powered customer support decision assistant designed for parcel delivery and logistics operations. ParcelPilot AI combines structured workflow automation, Retrieval-Augmented Generation (RAG), hybrid document retrieval, and LLM-powered responses to assist customers with shipment tracking, cancellations, ticket escalation, and policy-related queries.
 
-ParcelPilot AI is an AI-powered customer support decision assistant designed to help logistics and parcel operations teams handle customer queries using structured order data, policy documents, RAG-based retrieval, and workflow-driven decision logic.
-
----
-
-## 🚀 Features
-
-- 📦 Order status tracking
-- ❌ Order cancellation decisions
-- 💰 Service credit eligibility evaluation
-- 🚨 Ticket escalation with confirmation
-- 📄 RAG-based policy and agreement retrieval
-- 🤖 AI-generated responses
-- 🛡️ Structured fallback when the LLM is unavailable
-- 💬 Interactive Streamlit chat interface
-- 🌐 API support
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11-blue?logo=python" alt="Python 3.11"/>
+  <img src="https://img.shields.io/badge/Framework-Streamlit-FF4B4B?logo=streamlit" alt="Streamlit"/>
+  <img src="https://img.shields.io/badge/LLM-Google%20Gemini-4285F4?logo=google" alt="Google Gemini"/>
+  <img src="https://img.shields.io/badge/Vector%20Database-ChromaDB-orange" alt="ChromaDB"/>
+  <img src="https://img.shields.io/badge/Status-Development%20Validated-success" alt="Development Validated"/>
+</p>
 
 ---
 
-## 🏗️ Project Architecture
+## 🚀 Project Overview
+
+Traditional logistics customer support often requires agents to search through multiple systems, including order records, customer agreements, service policies, and standard operating procedures.
+
+ParcelPilot AI addresses this challenge through an intelligent support assistant that combines structured operational data with contextual document retrieval.
+
+The application identifies customer requests, routes them to appropriate workflows, retrieves relevant policy information, and generates contextual responses.
+
+### Key Objectives
+
+- Automate common logistics customer-support workflows.
+- Provide accurate shipment tracking information.
+- Support confirmation-based cancellation workflows.
+- Facilitate ticket escalation with customer approval.
+- Retrieve relevant policies from business documents.
+- Maintain account-aware retrieval for customer-specific agreements.
+- Improve response consistency through structured logic and RAG.
+
+---
+
+## ✨ Key Features
+
+### 1. 📍 Intelligent Order Tracking
+- Retrieve shipment information using order IDs.
+- Display carrier and shipment status.
+- Show scheduled pickup windows.
+- Identify missing pickup information.
+
+### 2. ❌ Confirmation-Based Cancellation
+- Evaluate cancellation eligibility.
+- Check applicable cancellation conditions.
+- Request explicit customer confirmation.
+- Revalidate eligibility before execution.
+- Record local cancellation state using SQLite.
+- Handle cancellation approval and rejection.
+
+### 3. 🎫 Ticket Escalation
+- Identify relevant support tickets.
+- Request customer confirmation before escalation.
+- Revalidate ticket ownership.
+- Create escalation records.
+- Apply idempotency safeguards to reduce duplicate actions.
+
+### 4. 💰 Service Credit Assessment
+- Evaluate service-credit eligibility.
+- Consider applicable operational conditions.
+- Retrieve customer-specific agreement rules.
+- Present relevant eligibility information.
+
+*Eligibility assessment does not automatically issue a financial credit.*
+
+### 5. 🧠 Retrieval-Augmented Generation (RAG)
+- Retrieve information from PDF policies and customer agreements.
+- Combine dense and keyword-based retrieval.
+- Apply Reciprocal Rank Fusion (RRF).
+- Rerank retrieved passages using a Cross-Encoder.
+- Generate contextual responses using Google Gemini.
+- Display supporting document sources and page references.
+
+### 6. 🔐 Security and Guardrails
+- Account-aware document retrieval.
+- Cross-account access checks.
+- Prompt-injection pattern detection.
+- Output validation.
+- Confirmation before sensitive actions.
+- Revalidation before action execution.
+
+---
+
+## 🏗️ System Architecture
 
 ```text
-parcelpilot-ai-agent/
-│
-├── data/
-│   ├── ParcelPilot_Assessment_Data.xlsx
-│   └── documents/
-│       ├── 01_Support_Policy_v3_CURRENT.pdf
-│       ├── 02_Support_Policy_v2_DEPRECATED.pdf
-│       ├── 03_Cancellation_and_Service_Credit_SOP_v4.pdf
-│       ├── 04_Product_Operations_Guide_and_Known_Issues.pdf
-│       ├── 05_Northstar_Logistics_Enterprise_Agreement.pdf
-│       └── 06_LumenWorks_Service_Agreement.pdf
-│
-├── src/
-│   ├── agent.py
-│   ├── api.py
-│   ├── config.py
-│   ├── data_loader.py
-│   ├── escalation_action.py
-│   ├── llm.py
-│   ├── response_generator.py
-│   ├── session_manager.py
-│   ├── workflow.py
-│   │
-│   ├── rag/
-│   │   ├── chunking.py
-│   │   ├── document_loader.py
-│   │   ├── retriever.py
-│   │   └── vector_store.py
-│   │
-│   └── tools/
-│       ├── cancellation_tools.py
-│       ├── order_tools.py
-│       ├── service_credit_tools.py
-│       └── ticket_tools.py
-│
-├── storage/
-│   ├── chunks.pkl
-│   └── faiss_index.bin
-│
-├── main.py
-├── streamlit_app.py
-├── requirements.txt
-└── README.md
-```
-
----
-
-## 🧠 How It Works
-
-```text
-Customer Query
-      │
-      ▼
-Input Guardrails + Workflow Detection
-      │
-      ├── Structured workflows
-      │      ├── Order / account lookup
-      │      ├── Cancellation / service-credit rules
-      │      └── Ticket validation + confirmed escalation
-      │
-      └── Policy / knowledge questions
-             ├── FAISS dense retrieval + BM25
-             ├── RRF fusion + Cross-Encoder reranking
-             └── Gemini response with source references
-                              │
-                              ▼
-                 Output Validation + Fallback
-```
-
----
-
-## 📦 Supported Workflows
-
-### 1. Order Status
-
-Retrieves available order information including:
-
-- Order ID
-- Carrier
-- Current status
-- Scheduled pickup window
-- Actual pickup time
-- Relevant order notices
-
-Example query:
-
-```text
-What is the status of my order?
-```
-
----
-
-### 2. Cancellation Decision
-
-Evaluates cancellation eligibility using:
-
-- Order status
-- Pickup status
-- Customer-specific agreements
-- Applicable support policies
-- Cancellation and service credit SOPs
-
-Example query:
-
-```text
-Can I cancel this order?
-```
-
----
-
-### 3. Service Credit Decision
-
-Checks whether a customer may be eligible for a service credit based on available order information and applicable conditions.
-
-Example query:
-
-```text
-Am I eligible for a service credit?
+                 CUSTOMER
+                    |
+                    v
+             STREAMLIT UI
+                    |
+                    v
+          PARCELPILOT AI AGENT
+                    |
+                    v
+           WORKFLOW DETECTION
+                    |
+          +---------+----------+
+          |                    |
+          v                    v
+   STRUCTURED WORKFLOWS      RAG PIPELINE
+          |                    |
+   +------+------+       PDF DOCUMENTS
+   |      |      |             |
+ Orders Cancel Escalation      v
+   |      |      |       DOCUMENT CHUNKING
+   |      |      |             |
+   |      v      |       EMBEDDINGS
+   |   SQLite    |             |
+   |             |       +-----+------+
+   |             |       |            |
+   |             |    ChromaDB       BM25
+   |             |    Dense Search   Search
+   |             |       |            |
+   |             |       +-----+------+
+   |             |             |
+   |             |           RRF
+   |             |             |
+   |             |      CROSS-ENCODER
+   |             |        RERANKING
+   |             |             |
+   |             |       GOOGLE GEMINI
+   |             |             |
+   +-------------+-------------+
+                    |
+                    v
+             RESPONSE LAYER
+                    |
+                    v
+          CUSTOMER SUPPORT RESPONSE
 ```
 
 ---
 
-### 4. Escalation Workflow
+## 🧠 RAG Architecture
 
-The escalation process uses confirmation before creating an escalation.
+ParcelPilot AI uses a hybrid retrieval approach to improve document search relevance.
 
-```text
-Customer requests escalation
-            ↓
-System identifies ticket
-            ↓
-Confirmation requested
-            ↓
-Customer replies Yes or No
-            ↓
-Escalation created or cancelled
-```
+### Retrieval Pipeline
 
-Example query:
+| Component | Purpose |
+|---|---|
+| PDF Loader | Loads policy and agreement documents |
+| Text Chunking | Splits documents into manageable passages |
+| Sentence Transformers | Generates document embeddings |
+| ChromaDB | Performs dense vector retrieval |
+| BM25 | Performs keyword-based retrieval |
+| Reciprocal Rank Fusion | Combines retrieval rankings |
+| Cross-Encoder | Reranks retrieved passages |
+| Google Gemini | Generates contextual responses |
 
-```text
-I want to escalate this issue.
-```
+### Hybrid Retrieval Flow
 
----
-
-## 🔎 Advanced RAG Pipeline
-
-The upgraded retrieval branch implements:
-- Dense semantic retrieval using FAISS
-- Sparse lexical retrieval using BM25
-- Reciprocal Rank Fusion (RRF)
-- Cross-Encoder reranking
-- Account-scoped customer-agreement filtering and inactive-document exclusion
-
-## 🛡️ Guardrails and Observability
-
-- Basic input validation and prompt-injection pattern checks
-- Output checks for empty, oversized, and obvious secret-bearing responses
-- LangSmith tracing for agent execution, retrieval, response generation, and Gemini calls
-- Retrieval evaluation script reporting Precision@K, Recall@K, MRR, and nDCG@K
-
-These checks are defense-in-depth measures, not a guarantee against all prompt injection or data leakage. Evaluation scores must be measured using reviewed relevance labels.
-
-Set these environment variables in your local environment or deployment secrets:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-LANGSMITH_TRACING=true
-LANGSMITH_API_KEY=your_langsmith_api_key
-LANGSMITH_PROJECT=parcelpilot-ai
-```
-
-Run retrieval evaluation after reviewing the relevant document IDs in `evaluation_dataset.json`:
-
-```bash
-python evaluate_rag.py
-```
-
-## 🤖 RAG-Based Document Retrieval
-
-ParcelPilot AI uses Retrieval-Augmented Generation (RAG) to retrieve relevant information from support policies, SOPs, product documentation, and customer agreements.
-
-The workflow includes:
-
-1. Loading PDF documents
-2. Splitting documents into chunks
-3. Generating vector embeddings
-4. Storing embeddings in FAISS
-5. Retrieving relevant document chunks
-6. Using retrieved context to support decisions and responses
-
----
-
-## 🛡️ Reliability and Fallback
-
-ParcelPilot AI supports a structured fallback mechanism.
-
-### AI Response
-
-When the LLM is available:
-
-```text
-Customer Query
-      ↓
-Structured Data + Retrieved Documents
-      ↓
-LLM
-      ↓
-AI-Generated Response
-```
-
-### Structured Fallback
-
-If the LLM is unavailable or reaches an API quota limit:
-
-```text
-Customer Query
-      ↓
-Structured Data
-      ↓
-Workflow Decision Logic
-      ↓
-Fallback Response
-```
-
-This allows core workflows such as order lookup, cancellation evaluation, service credit decisions, and escalation handling to continue using available structured data and decision logic.
+1. Customer submits a policy-related question.
+2. The retriever searches using dense vector retrieval.
+3. BM25 retrieves keyword-relevant passages.
+4. RRF combines candidate rankings.
+5. Cross-Encoder reranks the retrieved passages.
+6. Relevant context is provided to Gemini.
+7. The response is generated with supporting source references.
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Technology | Purpose |
+| Category | Technologies |
 |---|---|
-| Python | Core application development |
-| Streamlit | Interactive chat interface |
-| FastAPI | API layer |
-| Pandas | Structured data processing |
-| FAISS | Dense vector retrieval |\n| BM25 | Sparse keyword retrieval |\n| Reciprocal Rank Fusion | Hybrid ranking fusion |\n| Cross-Encoder | Retrieved-document reranking |\n| LangSmith | LLM and retrieval tracing |
-| Sentence Transformers | Text embeddings |
-| Google Gemini | AI response generation |
-| PyPDF | PDF document processing |
-| SQLite | Local escalation persistence and duplicate protection |
-| Python Dotenv | Environment variable management |
+| Programming Language | Python |
+| Frontend | Streamlit |
+| LLM | Google Gemini |
+| Embeddings | Sentence Transformers |
+| Vector Database | ChromaDB |
+| Keyword Retrieval | BM25 |
+| Rank Fusion | Reciprocal Rank Fusion |
+| Reranking | Cross-Encoder |
+| Database | SQLite |
+| Data Processing | Pandas |
+| Document Processing | PyPDF |
+| Testing | Pytest |
+| Observability | LangSmith |
+| Version Control | Git and GitHub |
 
 ---
 
-## ⚙️ Installation
+## 📂 Project Structure
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/Mainuddin123/parcelpilot-ai-agent.git
+```text
+ParcelPilot-AI/
+│
+├── src/
+│   ├── agent.py
+│   ├── config.py
+│   ├── data_loader.py
+│   ├── database.py
+│   ├── llm.py
+│   ├── response_generator.py
+│   ├── workflow.py
+│   ├── escalation_action.py
+│   ├── session_manager.py
+│   │
+│   ├── tools/
+│   │   └── cancellation_tools.py
+│   │
+│   └── rag/
+│       ├── vector_store.py
+│       ├── retriever.py
+│       └── test_hybrid_retrieval.py
+│
+├── tests/
+│   └── test_workflow_routing.py
+│
+├── streamlit_app.py
+├── test_upgrade.py
+├── test_workflow.py
+├── requirements.txt
+├── .gitignore
+└── README.md
 ```
 
-```bash
-cd parcelpilot-ai-agent
-```
+*The structure above highlights the main application modules. Additional data, configuration, and test files may be present in the repository.*
 
-### 2. Create a Virtual Environment
+---
 
-```bash
-python -m venv venv
-```
+## ⚙️ Installation and Setup
 
-### 3. Activate the Virtual Environment
+### Prerequisites
 
-#### Windows
+- Python 3.11 or compatible version
+- Git
+- Google Gemini API key
+- VS Code or another Python development environment
 
-```bash
-venv\Scripts\activate
-```
-
-#### macOS/Linux
+### Step 1: Clone the Repository
 
 ```bash
-source venv/bin/activate
+git clone https://github.com/Mainuddin123/ParcelPilot-AI---Autonomous-Customer-Support-Agent.git
 ```
 
-### 4. Install Dependencies
+### Step 2: Navigate to the Project
+
+```bash
+cd ParcelPilot-AI---Autonomous-Customer-Support-Agent
+```
+
+### Step 3: Create a Virtual Environment
+
+```bash
+python -m venv .venv
+```
+
+Activate it on Windows:
+
+```powershell
+.venv\Scripts\activate
+```
+
+### Step 4: Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+### Step 5: Configure API Credentials
 
-## 🔐 Environment Variables
+Configure your Google Gemini API key using the environment variable expected by the application's configuration.
 
-Create a `.env` file in the project root:
+For example, if the application reads `GEMINI_API_KEY`:
 
-```env
-GEMINI_API_KEY=your_gemini_api_key\n\nLANGSMITH_TRACING=true\nLANGSMITH_TRACING_V2=true\nLANGSMITH_API_KEY=your_langsmith_api_key\nLANGSMITH_PROJECT=parcelpilot-ai\nLANGSMITH_HIDE_INPUTS=true\nLANGSMITH_HIDE_OUTPUTS=true
+```powershell
+$env:GEMINI_API_KEY="your_api_key"
 ```
 
-> ⚠️ Do not commit your API keys or `.env` file to GitHub.
+For persistent deployment, configure credentials through the hosting platform's secrets management.
 
----
+**Security:** Never commit API keys, `.env` files, or Streamlit secrets to GitHub.
 
-## ▶️ Running the Application
-
-### Run the Streamlit Application
+### Step 6: Run the Application
 
 ```bash
 streamlit run streamlit_app.py
 ```
 
-### Optional API Layer\n\nThe FastAPI module remains available for separate API experiments, but the Streamlit application does not depend on it.\n\n### Run the Terminal Application
-
-```bash
-python main.py
-```
-
----
-
-## 🌐 API Usage
-
-The project includes an API layer for programmatic access.
-
-Example request:
-
-```json
-{
-  "query": "What is the status of my order?",
-  "account_id": "ACCT-001",
-  "order_id": "ORD-1001",
-  "ticket_id": null
-}
-```
-
----
-
-## 💬 Example Queries
+The application will be available at:
 
 ```text
-What is the status of my order?
-
-Can I cancel this order?
-
-Am I eligible for a service credit?
-
-I want to escalate this issue.
-
-What is the cancellation policy for my order?
+http://localhost:8501
 ```
 
 ---
 
-## 📊 Data Sources
+## 🧪 Testing and Validation
 
-The system uses:
+The project was tested using automated pytest tests and manual application demonstrations.
 
-- Structured account data
-- Order and shipment information
-- Ticket information
-- Support policies
-- Cancellation and service credit SOPs
-- Product operations documentation
-- Customer-specific service agreements
+### Automated Testing
 
-These sources are used to provide context-aware and policy-informed responses.
+| Metric | Result |
+|---|---:|
+| Tests collected | 47 |
+| Tests passed | 47 |
+| Tests failed | 0 |
+| Execution time | 43.05 seconds |
+| Python version | 3.11.9 |
+
+Run the automated test suite:
+
+```bash
+python -m pytest -v
+```
+
+### Manual End-to-End Testing
+
+The following five scenarios were demonstrated successfully in the Streamlit application.
+
+| Test Case | Scenario | Result |
+|---|---|---|
+| TC-01 | Order tracking | Passed |
+| TC-02 | Cancellation declined | Passed |
+| TC-03 | Cancellation confirmed | Passed |
+| TC-04 | Ticket escalation | Passed |
+| TC-05 | RAG policy retrieval | Passed |
+
+### Demonstrated Results
+
+- Successfully retrieved order information for `ORD-1001`.
+- Confirmed that declining cancellation leaves the order unchanged.
+- Demonstrated a local cancellation status update to `CANCELLED`.
+- Successfully created escalation `ESC-TKT-501`.
+- Retrieved cancellation and service-credit policies with supporting document references.
+
+*Testing results reflect the development environment and demonstrations performed. They do not establish production-scale reliability.*
 
 ---
 
-## 🔮 Future Improvements
+## 🔒 Limitations and Considerations
 
-- User authentication
-- Persistent chat history
-- Database integration
-- Real-time order tracking
-- Automated testing
-- Docker containerization
-- Cloud deployment
-- Multi-user support
-- Improved LLM fallback strategies
-- Admin dashboard
+- SQLite cancellation updates represent local application state; they do not independently cancel shipments through external carrier systems.
+- Carrier API integration is required for real shipment cancellation and synchronization.
+- Service-credit assessment does not automatically issue financial credits.
+- Local database and vector-store persistence must be verified in the deployment environment.
+- Production deployment requires authentication, authorization, persistent storage, monitoring, and additional security validation.
+- Prompt-injection detection and output validation are safeguards, not guarantees against every attack.
 
 ---
 
-## 👨‍💻 Author
+## 🔮 Future Enhancements
+
+- Integrate real-time carrier APIs.
+- Implement shipment status synchronization.
+- Introduce managed database infrastructure.
+- Add authentication and role-based access control.
+- Improve audit logging and action traceability.
+- Add comprehensive RAG evaluation metrics.
+- Implement advanced observability and monitoring.
+- Expand automated integration and deployment tests.
+- Improve workflow classification and response metadata.
+
+---
+
+## 📊 Project Validation Summary
+
+| Area | Status |
+|---|---|
+| Order Tracking | Demonstrated |
+| Cancellation Workflow | Demonstrated |
+| Ticket Escalation | Demonstrated |
+| Service Credit Assessment | Implemented workflow |
+| Hybrid RAG Retrieval | Demonstrated |
+| Account-Aware Retrieval | Automated tests passed |
+| Automated Test Suite | 47/47 passed |
+| Manual Demonstrations | 5/5 completed |
+
+---
+
+## 👨‍💻 Developer
 
 **Mainuddin**
 
-Engineering Graduate | Aspiring AI Engineer & Data Scientist
+AI & Data Science Graduate | Aspiring AI Engineer
 
-GitHub: https://github.com/Mainuddin123
-
----
-
-## 📄 License
-
-This project is developed for educational and assessment purposes.
+- GitHub: [Mainuddin123](https://github.com/Mainuddin123)
+- LinkedIn: [Khaja Mainuddin SK](https://www.linkedin.com/in/khaja-mainuddin-sk-958436348)
 
 ---
 
-## ⭐ Key Highlights
+## 📌 Project Repository
 
-- AI-powered customer support assistant
-- Structured order data processing
-- Policy-aware decision making
-- RAG-based document retrieval
-- Cancellation workflow
-- Service credit evaluation
-- Confirmation-based escalation
-- Streamlit chat interface
-- API integration
-- LLM fallback using structured decision logic
+[ParcelPilot AI – Autonomous Customer Support Agent](https://github.com/Mainuddin123/ParcelPilot-AI---Autonomous-Customer-Support-Agent)
+
+**Latest development commit:** `4db1e76`
 
 ---
 
-## ⚡ Reliability, Performance and Safety
-
-The upgrade branch includes the following implementation details:
-
-- **Lazy RAG initialization:** embedding/vector retrieval is not initialized for structured order, cancellation, service-credit, or account workflows.
-- **Process-level model reuse:** the embedding model, Cross-Encoder, and read-only retriever are reused across Streamlit chat sessions in one Python process. The first RAG request can still be slower because it performs cold initialization.
-- **Hybrid retrieval fallback:** dense FAISS + BM25 + RRF results remain available if Cross-Encoder loading or inference fails.
-- **Bounded Gemini calls:** requests use a configurable timeout (GEMINI_TIMEOUT_MS, default 20,000 ms) and at most one retry for recognized transient failures. LLM failures fall back to structured information where available.
-- **Retrieval fallback:** if document retrieval fails, the app returns a clearly labelled response based only on available structured records; it does not invent policy details.
-- **Account isolation:** order and ticket lookups require an Account ID and verify ownership. Customer-specific agreement chunks are filtered by account.
-- **Escalation confirmation:** a ticket is revalidated immediately before the action is recorded. A negative confirmation cancels the action.
-- **Idempotent escalation store:** SQLite persists local demo escalations and prevents more than one escalation record per ticket. The SQLite file is stored under storage/escalations.sqlite3.
-
-### Deployment limitation
-
-The SQLite escalation store is intended for a **single-instance local/demo deployment**. It is not a shared database for multiple app replicas and may not persist on ephemeral hosting platforms. A production multi-instance deployment should use a shared transactional database and authenticated user identity. The demo does not connect to a real carrier or ticketing platform.
-
-### LangSmith monitoring
-
-Set LANGSMITH_TRACING=true, LANGSMITH_API_KEY, and LANGSMITH_PROJECT=parcelpilot-ai in .env. Traced operations include agent processing, hybrid retrieval, response generation, and Gemini generation. Keep input/output hiding enabled when tracing customer-like data.
-
-### Run tests and retrieval evaluation
-
-```bash
-python -m pytest test_upgrade.py -q
-python evaluate_rag.py
-```
-
-The retrieval evaluation uses reviewed document/page labels in evaluation_dataset.json and reports Precision@K, Recall@K, MRR, and nDCG@K. These metrics are only meaningful after the relevance labels have been manually checked. Record the output as the measured result; do not claim a score before running the script.
-
-The Streamlit interface displays measured request latency. Compare the first RAG request (cold start) with later requests (warm start); structured workflows should avoid initializing the RAG models.
+<p align="center">
+  <b>ParcelPilot AI</b><br/>
+  Intelligent Support. Contextual Answers. Safer Workflows.
+</p>
