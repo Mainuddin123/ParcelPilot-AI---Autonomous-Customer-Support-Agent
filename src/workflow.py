@@ -1,55 +1,145 @@
+
+import re
+
+
 def detect_workflow(query: str):
     q = query.lower().strip()
 
-    cancellation = [
-        "can i cancel", "cancel my order", "cancel order",
-        "cancel shipment", "cancel my shipment", "cancel my parcel",
-        "i want to cancel", "please cancel", "stop shipment",
-        "stop my parcel", "request cancellation"
+    # =========================================
+    # CANCELLATION WORKFLOW
+    # =========================================
+
+    cancellation_patterns = [
+        r"\bcan i cancel\b",
+        r"\bcancel(?:\s+my)?\s+order\b",
+        r"\bcancel(?:\s+my)?\s+shipment\b",
+        r"\bcancel(?:\s+my)?\s+parcel\b",
+        r"\bi want to cancel\b",
+        r"\bi need to cancel\b",
+        r"\bplease cancel\b",
+        r"\bcancel\s+ord-\d+\b",
+        r"\bcancel\s+the\s+shipment\b",
+        r"\bstop\s+(?:my\s+)?shipment\b",
+        r"\bstop\s+(?:my\s+)?parcel\b",
+        r"\brequest cancellation\b",
+        r"\binitiate cancellation\b",
+        r"\bwithdraw.*shipment\b",
     ]
-    if any(k in q for k in cancellation):
+
+    if any(re.search(pattern, q) for pattern in cancellation_patterns):
         return "cancellation"
 
+    # =========================================
+    # SERVICE CREDIT WORKFLOW
+    # =========================================
+
     service_credit = [
-        "service credit", "credit eligibility", "eligible for credit",
-        "eligible for compensation", "claim compensation",
-        "request compensation", "claim refund", "request a refund",
+        "service credit",
+        "credit eligibility",
+        "eligible for credit",
+        "eligible for compensation",
+        "claim compensation",
+        "request compensation",
+        "claim refund",
+        "request a refund",
         "delivery compensation"
     ]
-    if any(k in q for k in service_credit):
+
+    if any(term in q for term in service_credit):
         return "service_credit"
 
+    # =========================================
+    # ESCALATION WORKFLOW
+    # =========================================
+
     escalation_actions = [
-        "escalate ticket", "escalate my ticket", "escalate my issue",
-        "escalate this issue", "escalate this ticket",
-        "i want to escalate", "please escalate", "raise an escalation",
-        "raise escalation", "create an escalation", "create escalation",
-        "submit an escalation", "submit escalation",
-        "mark as urgent", "mark this as priority"
+        "escalate ticket",
+        "escalate my ticket",
+        "escalate my issue",
+        "escalate this issue",
+        "escalate this ticket",
+        "i want to escalate",
+        "please escalate",
+        "raise an escalation",
+        "raise escalation",
+        "create an escalation",
+        "create escalation",
+        "submit an escalation",
+        "submit escalation",
+        "mark as urgent",
+        "mark this as priority"
     ]
-    if any(k in q for k in escalation_actions):
+
+    if any(term in q for term in escalation_actions):
         return "escalation"
 
-    # Information requests about policies should use RAG, not create actions.
+    # =========================================
+    # POLICY INFORMATION -> RAG
+    # =========================================
+
     policy_terms = [
-        "policy", "policies", "sla", "sop", "terms and conditions",
-        "escalation process", "cancellation rules", "refund rules",
+        "policy",
+        "policies",
+        "sla",
+        "sop",
+        "terms and conditions",
+        "escalation process",
+        "cancellation rules",
+        "cancellation policy",
+        "refund rules",
+        "refund policy",
         "service credit rules"
     ]
-    if any(k in q for k in policy_terms):
+
+    if any(term in q for term in policy_terms):
         return "general"
 
-    if any(k in q for k in ["ticket status", "check ticket", "ticket details",
-                            "support request status", "support case",
-                            "case status", "issue status"]):
+    # =========================================
+    # TICKET WORKFLOW
+    # =========================================
+
+    ticket_terms = [
+        "ticket status",
+        "check ticket",
+        "ticket details",
+        "support request status",
+        "support case",
+        "case status",
+        "issue status"
+    ]
+
+    if any(term in q for term in ticket_terms):
         return "ticket"
 
-    if any(k in q for k in ["order", "parcel", "shipment", "delivery",
-                            "tracking", "pickup"]):
+    # =========================================
+    # ORDER WORKFLOW
+    # =========================================
+
+    order_terms = [
+        "order",
+        "parcel",
+        "shipment",
+        "delivery",
+        "tracking",
+        "pickup"
+    ]
+
+    if any(term in q for term in order_terms):
         return "order"
 
-    if any(k in q for k in ["account", "my plan", "support available",
-                            "premium support", "account status"]):
+    # =========================================
+    # ACCOUNT WORKFLOW
+    # =========================================
+
+    account_terms = [
+        "account",
+        "my plan",
+        "support available",
+        "premium support",
+        "account status"
+    ]
+
+    if any(term in q for term in account_terms):
         return "account"
 
     return "general"

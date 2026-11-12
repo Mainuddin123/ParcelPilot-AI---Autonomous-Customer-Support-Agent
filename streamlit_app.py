@@ -3,10 +3,22 @@ import uuid
 import time
 import html
 
+
 from src.agent import ParcelPilotAgent
 
 import pandas as pd
 from pathlib import Path
+
+import re
+
+def clean_markdown(text):
+    """Convert literal escaped newline sequences into actual line breaks."""
+    if not isinstance(text, str):
+        return text
+
+    text = re.sub(r"\\+n", "\n", text)
+    text = text.replace("\\r", "")
+    return text
 
 DATA_FILE = (
     Path(__file__).resolve().parent
@@ -1002,8 +1014,7 @@ for message in st.session_state.messages:
         )
 
         st.markdown(
-            content
-        )
+            clean_markdown(content))
 
         workflow = message.get(
             "workflow"
@@ -1148,7 +1159,8 @@ if query:
 
             latency_ms = round((time.perf_counter() - started_at) * 1000, 1)
 
-            answer = data.get("answer", "No response was generated.")
+            answer = clean_markdown(
+                data.get("answer", "No response was generated."))
             structured_data = data.get("structured_data", {})
             workflow = structured_data.get("workflow", "general")
             citations = data.get("citations", [])

@@ -30,3 +30,5 @@ storage/chroma_db/
 
 # Python test cache
 .pytest_cache/
+# Local SQLite database
+*.db

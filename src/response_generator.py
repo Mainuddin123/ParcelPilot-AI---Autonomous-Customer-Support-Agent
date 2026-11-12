@@ -1,3 +1,5 @@
+
+import time
 from functools import lru_cache
 
 from src.llm import GeminiLLM
@@ -5,45 +7,41 @@ from src.guardrails import validate_output
 from src.tracing import traced
 
 
-def generate_fallback_response(
-    query,
-    structured_data
-):
-    workflow = structured_data.get(
-        "workflow",
-        ""
-    )
+def generate_fallback_response(query, structured_data):
 
-    order_data = structured_data.get(
-        "order",
-        {}
-    )
-
-    account_data = structured_data.get(
-        "account",
-        {}
-    )
-
-    cancellation_data = structured_data.get(
-        "cancellation",
-        {}
-    )
-
-    # Do not infer a decision when an order identifier/data is missing.
-    if workflow in {"order", "cancellation", "service_credit"} and not order_data:
-        if workflow == "cancellation":
-            return "# Cancellation Verification\\n\\nPlease provide a valid Order ID so I can verify cancellation eligibility."
-        if workflow == "service_credit":
-            return "# Service Credit Verification\\n\\nPlease provide a valid Order ID so I can verify service-credit eligibility."
-        return "# Order Information\\n\\nPlease provide a valid Order ID so I can look up the order."
-
-    service_credit_data = structured_data.get(
-        "service_credit",
-        {}
-    )
+    workflow = structured_data.get("workflow", "")
+    order_data = structured_data.get("order", {})
+    account_data = structured_data.get("account", {})
+    cancellation_data = structured_data.get("cancellation", {})
+    service_credit_data = structured_data.get("service_credit", {})
 
     # =========================================
-    # ORDER ACCESS / NOT FOUND
+    # MISSING ORDER DATA
+    # =========================================
+
+    if workflow in {"order", "cancellation", "service_credit"} and not order_data:
+
+        if workflow == "cancellation":
+            return (
+                "# Cancellation Verification\n\n"
+                "Please provide a valid Order ID so I can "
+                "verify cancellation eligibility."
+            )
+
+        if workflow == "service_credit":
+            return (
+                "# Service Credit Verification\n\n"
+                "Please provide a valid Order ID so I can "
+                "verify service-credit eligibility."
+            )
+
+        return (
+            "# Order Information\n\n"
+            "Please provide a valid Order ID so I can look up the order."
+        )
+
+    # =========================================
+    # ORDER NOT FOUND
     # =========================================
 
     if order_data and not order_data.get("found"):
@@ -54,24 +52,20 @@ def generate_fallback_response(
         )
 
         if workflow == "service_credit":
-
-            return f"""# Service Credit Verification
-
-We could not verify service-credit eligibility because the order was not found or could not be accessed.
-
-{message}"""
+            return (
+                "# Service Credit Verification\n\n"
+                "We could not verify service-credit eligibility.\n\n"
+                f"{message}"
+            )
 
         if workflow == "cancellation":
+            return (
+                "# Cancellation Verification\n\n"
+                "We could not verify cancellation eligibility.\n\n"
+                f"{message}"
+            )
 
-            return f"""# Cancellation Verification
-
-We could not verify cancellation eligibility because the order was not found or could not be accessed.
-
-{message}"""
-
-        return f"""# Order Information
-
-{message}"""
+        return f"# Order Information\n\n{message}"
 
     # =========================================
     # CANCELLATION RESPONSE
@@ -79,8 +73,6 @@ We could not verify cancellation eligibility because the order was not found or 
 
     if workflow == "cancellation":
 
-        # The cancellation tool historically returned "can_cancel".
-        # Accept that field while standardizing on "allowed".
         allowed = cancellation_data.get(
             "allowed",
             cancellation_data.get("can_cancel", False)
@@ -95,18 +87,17 @@ We could not verify cancellation eligibility because the order was not found or 
         )
 
         if allowed:
+            return (
+                "# Cancellation Decision\n\n"
+                "Your order is eligible for cancellation.\n\n"
+                f"{message}"
+            )
 
-            return f"""# Cancellation Decision
-
-Your order is eligible for cancellation.
-
-{message}"""
-
-        return f"""# Cancellation Decision
-
-Your order is not eligible for cancellation.
-
-{message}"""
+        return (
+            "# Cancellation Decision\n\n"
+            "Your order is not eligible for cancellation.\n\n"
+            f"{message}"
+        )
 
     # =========================================
     # SERVICE CREDIT RESPONSE
@@ -114,10 +105,7 @@ Your order is not eligible for cancellation.
 
     if workflow == "service_credit":
 
-        eligible = service_credit_data.get(
-            "eligible",
-            False
-        )
+        eligible = service_credit_data.get("eligible", False)
 
         reason = service_credit_data.get(
             "reason",
@@ -133,20 +121,18 @@ Your order is not eligible for cancellation.
         )
 
         if eligible:
+            return (
+                "# Service Credit Decision\n\n"
+                "You are eligible for a service credit.\n\n"
+                f"- **Credit Amount:** ₹{credit_amount}\n\n"
+                f"**Reason:** {reason}"
+            )
 
-            return f"""# Service Credit Decision
-
-You are eligible for a service credit.
-
-- **Credit Amount:** ₹{credit_amount}
-
-**Reason:** {reason}"""
-
-        return f"""# Service Credit Decision
-
-You are not eligible for a service credit.
-
-**Reason:** {reason}"""
+        return (
+            "# Service Credit Decision\n\n"
+            "You are not eligible for a service credit.\n\n"
+            f"**Reason:** {reason}"
+        )
 
     # =========================================
     # ORDER RESPONSE
@@ -154,62 +140,25 @@ You are not eligible for a service credit.
 
     if order_data.get("found"):
 
-        order = order_data.get(
-            "order",
-            {}
-        )
+        order = order_data.get("order", {})
+        issues = order_data.get("issues", [])
 
-        issues = order_data.get(
-            "issues",
-            []
-        )
+        order_id = order.get("order_id", "Unknown")
+        status = order.get("status", "Unknown")
+        carrier = order.get("carrier", "Unknown")
 
-        order_id = order.get(
-            "order_id",
-            "Unknown"
-        )
+        pickup_start = order.get("pickup_window_start")
+        pickup_end = order.get("pickup_window_end")
+        pickup_actual = order.get("pickup_actual_at")
 
-        status = order.get(
-            "status",
-            "Unknown"
-        )
+        def clean_value(value):
+            if value is None or str(value).lower() in {"nan", "none", ""}:
+                return "Not available"
+            return value
 
-        carrier = order.get(
-            "carrier",
-            "Unknown"
-        )
-
-        pickup_start = order.get(
-            "pickup_window_start"
-        )
-
-        pickup_end = order.get(
-            "pickup_window_end"
-        )
-
-        pickup_actual = order.get(
-            "pickup_actual_at"
-        )
-
-        # Handle missing / NaN values
-
-        if (
-            pickup_start is None
-            or str(pickup_start).lower() == "nan"
-        ):
-            pickup_start = "Not available"
-
-        if (
-            pickup_end is None
-            or str(pickup_end).lower() == "nan"
-        ):
-            pickup_end = "Not available"
-
-        if (
-            pickup_actual is None
-            or str(pickup_actual).lower() == "nan"
-        ):
-            pickup_actual = "Not available"
+        pickup_start = clean_value(pickup_start)
+        pickup_end = clean_value(pickup_end)
+        pickup_actual = clean_value(pickup_actual)
 
         answer = f"""# Order Information
 
@@ -222,19 +171,11 @@ Based on the available order information:
 - **Actual Pickup Time:** {pickup_actual}
 """
 
-        # =====================================
-        # PROACTIVE ISSUE INFORMATION
-        # =====================================
-
         if issues:
-
             answer += "\n### Important Notice\n\n"
 
             for issue in issues:
-
-                answer += (
-                    f"- ⚠️ {issue}\n"
-                )
+                answer += f"- ⚠️ {issue}\n"
 
         answer += (
             "\nThis response is based on the "
@@ -247,12 +188,9 @@ Based on the available order information:
     # ACCOUNT RESPONSE
     # =========================================
 
-    if account_data.get("found"):
+    if workflow == "account" and account_data.get("found"):
 
-        account = account_data.get(
-            "account",
-            {}
-        )
+        account = account_data.get("account", {})
 
         return f"""# Account Information
 
@@ -264,21 +202,24 @@ Based on the available account information:
 
 This response is based on the available structured account data."""
 
-    # =========================================
-    # DEFAULT RESPONSE
-    # =========================================
-
     return (
         "The requested information could not be found "
         "in the available structured data."
     )
 
 
+# =============================================
+# SHARED GEMINI CLIENT
+# =============================================
+
 @lru_cache(maxsize=1)
 def _get_shared_llm():
-    """Reuse the Gemini client instead of recreating it for every request."""
     return GeminiLLM()
 
+
+# =============================================
+# RESPONSE GENERATION
+# =============================================
 
 @traced(name="parcelpilot.response_generation")
 def generate_response(
@@ -287,7 +228,14 @@ def generate_response(
     context,
     citations
 ):
+
+    total_start = time.perf_counter()
+
+    # 1. Reuse Gemini client.
     llm = _get_shared_llm()
+
+    # 2. Construct prompt.
+    prompt_start = time.perf_counter()
 
     prompt = f"""
 You are ParcelPilot AI, a customer support decision assistant.
@@ -327,9 +275,8 @@ explain why.
 8. If service credit is not allowed,
 explain why.
 
-9. If the available information is insufficient
-or conflicting, clearly state the uncertainty
-instead of guessing.
+9. If information is insufficient or conflicting,
+clearly state the uncertainty instead of guessing.
 
 10. Mention only the sources actually provided
 in the retrieved context.
@@ -351,19 +298,24 @@ CITATIONS:
 Provide the final customer support answer.
 """
 
+    prompt_time = (
+        time.perf_counter() - prompt_start
+    ) * 1000
+
+    print(f"[PERF] Prompt construction: {prompt_time:.2f} ms")
+
+    # 3. Gemini generation.
+    generation_start = time.perf_counter()
+
     try:
 
-        answer = llm.generate(
-            prompt
-        )
+        answer = llm.generate(prompt)
 
         status = "success"
 
     except Exception as error:
 
-        print(
-            f"\nLLM generation failed: {error}\n"
-        )
+        print(f"[LLM] Generation failed: {error}")
 
         answer = generate_fallback_response(
             query,
@@ -372,10 +324,33 @@ Provide the final customer support answer.
 
         status = "fallback_response"
 
+    generation_time = (
+        time.perf_counter() - generation_start
+    ) * 1000
+
+    print(f"[PERF] Gemini generation: {generation_time:.2f} ms")
+
+    # 4. Output validation.
+    validation_start = time.perf_counter()
+
     output_ok, safe_answer = validate_output(answer)
+
+    validation_time = (
+        time.perf_counter() - validation_start
+    ) * 1000
+
+    print(f"[PERF] Output validation: {validation_time:.2f} ms")
+
     if not output_ok:
         answer = safe_answer
         status = "blocked_output"
+
+    # 5. Total response generation time.
+    total_time = (
+        time.perf_counter() - total_start
+    ) * 1000
+
+    print(f"[PERF] Total response generation: {total_time:.2f} ms")
 
     return {
         "query": query,

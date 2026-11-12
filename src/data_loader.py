@@ -1,24 +1,33 @@
+
 import pandas as pd
 
-from src.config import EXCEL_FILE
+from src.database import (
+    initialize_database,
+    load_table,
+    get_order as get_sqlite_order,
+)
 
 
 class DataLoader:
 
     def __init__(self):
 
+        # Initialize SQLite and migrate Excel data on first run
+        initialize_database()
+
+        # =========================================
+        # LOAD DATA
+        # =========================================
+
         self.accounts = pd.read_excel(
-            EXCEL_FILE,
+            __import__("src.config", fromlist=["EXCEL_FILE"]).EXCEL_FILE,
             sheet_name="accounts"
         )
 
-        self.orders = pd.read_excel(
-            EXCEL_FILE,
-            sheet_name="orders"
-        )
+        self.orders = load_table("orders")
 
         self.tickets = pd.read_excel(
-            EXCEL_FILE,
+            __import__("src.config", fromlist=["EXCEL_FILE"]).EXCEL_FILE,
             sheet_name="tickets"
         )
 
@@ -118,7 +127,7 @@ class DataLoader:
         return result.iloc[0].to_dict()
 
     # =============================================
-    # GET ORDER
+    # GET ORDER - SQLITE
     # =============================================
 
     def get_order(
@@ -135,15 +144,7 @@ class DataLoader:
             .upper()
         )
 
-        result = self.orders[
-            self.orders["order_id"]
-            == order_id
-        ]
-
-        if result.empty:
-            return None
-
-        return result.iloc[0].to_dict()
+        return get_sqlite_order(order_id)
 
     # =============================================
     # GET TICKET
@@ -174,7 +175,7 @@ class DataLoader:
         return result.iloc[0].to_dict()
 
     # =============================================
-    # GET ACCOUNT ORDERS
+    # GET ACCOUNT ORDERS - SQLITE
     # =============================================
 
     def get_account_orders(
@@ -225,4 +226,27 @@ class DataLoader:
 
         return result.to_dict(
             orient="records"
+        )
+
+    # =============================================
+    # REFRESH ORDERS AFTER DATABASE UPDATE
+    # =============================================
+
+    def refresh_orders(self):
+
+        self.orders = load_table("orders")
+
+        self.orders.columns = (
+            self.orders.columns.astype(str)
+            .str.strip()
+        )
+
+        self._normalize_id_column(
+            self.orders,
+            "order_id"
+        )
+
+        self._normalize_id_column(
+            self.orders,
+            "account_id"
         )

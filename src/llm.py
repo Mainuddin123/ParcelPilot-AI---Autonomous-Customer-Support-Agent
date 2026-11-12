@@ -1,9 +1,11 @@
+
 import os
 import time
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
 from src.tracing import traced
 
 
@@ -14,83 +16,159 @@ class GeminiLLM:
 
     def __init__(self):
 
-        # Streamlit Community Cloud stores credentials in st.secrets;
-        # local development continues to use environment variables / .env.
+        # Read local environment or Streamlit Cloud secrets.
         try:
             import streamlit as st
-            secret_api_key = st.secrets.get("GEMINI_API_KEY", "")
-            secret_timeout = st.secrets.get("GEMINI_TIMEOUT_MS", "20000")
+
+            secret_api_key = st.secrets.get(
+                "GEMINI_API_KEY", ""
+            )
+            secret_timeout = st.secrets.get(
+                "GEMINI_TIMEOUT_MS", "20000"
+            )
+            secret_primary = st.secrets.get(
+                "GEMINI_MODEL", "gemini-3.8-flash"
+            )
+            secret_fallback = st.secrets.get(
+                "GEMINI_FALLBACK_MODEL",
+                "gemini-3.5-flash-lite"
+            )
+
         except Exception:
             secret_api_key = ""
             secret_timeout = "20000"
+            secret_primary = "gemini-3.8-flash"
+            secret_fallback = "gemini-3.5-flash-lite"
 
-        api_key = os.getenv("GEMINI_API_KEY") or secret_api_key
+        api_key = (
+            os.getenv("GEMINI_API_KEY")
+            or secret_api_key
+        )
 
         if not api_key:
             raise ValueError(
-                "GEMINI_API_KEY is missing. Configure it in the environment "
-                "or Streamlit Community Cloud app secrets."
+                "GEMINI_API_KEY is missing."
             )
 
-        timeout_ms = int(
-            os.getenv("GEMINI_TIMEOUT_MS") or secret_timeout
+        self.timeout_ms = int(
+            os.getenv("GEMINI_TIMEOUT_MS")
+            or secret_timeout
         )
+
+        self.primary_model = (
+            os.getenv("GEMINI_MODEL")
+            or secret_primary
+        )
+
+        self.fallback_model = (
+            os.getenv("GEMINI_FALLBACK_MODEL")
+            or secret_fallback
+        )
+
+        if self.primary_model == self.fallback_model:
+            raise ValueError(
+                "Primary and fallback models must be different."
+            )
+
         self.client = genai.Client(
             api_key=api_key,
-            http_options=types.HttpOptions(timeout=timeout_ms)
+            http_options=types.HttpOptions(
+                timeout=self.timeout_ms
+            )
         )
 
     @traced(name="parcelpilot.gemini_generation")
     def generate(self, prompt: str):
 
-        max_attempts = 2
+        models = [
+            self.primary_model,
+            self.fallback_model,
+        ]
 
-        for attempt in range(max_attempts):
+        last_error = None
+
+        for index, model_name in enumerate(models):
+
+            start = time.perf_counter()
 
             try:
 
-                response = (
-                    self.client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=prompt
-                    )
+                print(
+                    f"[LLM] Trying model: {model_name}"
                 )
 
-                return response.text
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
 
-            except Exception as e:
+                elapsed = (
+                    time.perf_counter() - start
+                ) * 1000
 
-                error_message = str(e)
+                answer = response.text
 
-                # Quota / rate limit error
-                if (
-                    "429" in error_message
-                    or "RESOURCE_EXHAUSTED"
-                    in error_message
-                ):
-
-                    print(
-                        "Gemini quota or rate limit reached."
-                    )
-
+                if not answer or not answer.strip():
                     raise RuntimeError(
-                        "Gemini API quota exceeded."
+                        f"{model_name} returned an empty response."
                     )
-
-                # Retry only transient rate-limit, server, or timeout failures.
-                transient = any(code in error_message for code in (
-                    "429", "500", "502", "503", "504",
-                    "RESOURCE_EXHAUSTED", "UNAVAILABLE",
-                    "DeadlineExceeded", "Timeout"
-                ))
-                if attempt == max_attempts - 1 or not transient:
-                    raise RuntimeError(f"LLM request failed: {e}") from e
-
-                wait_time = 1.5 * (attempt + 1)
 
                 print(
-                    f"LLM attempt {attempt + 1} failed. "
-                    f"Retrying in {wait_time} seconds..."
+                    f"[PERF] {model_name}: {elapsed:.2f} ms"
                 )
 
-                time.sleep(wait_time)
+                if index == 1:
+                    print(
+                        "[LLM] Fallback model generated the response."
+                    )
+
+                return answer
+
+            except Exception as error:
+
+                last_error = error
+
+                elapsed = (
+                    time.perf_counter() - start
+                ) * 1000
+
+                error_message = str(error)
+
+                print(
+                    f"[LLM] {model_name} failed "
+                    f"after {elapsed:.2f} ms: {error_message}"
+                )
+
+                # Only switch models for transient failures.
+                transient = any(
+                    code in error_message.lower()
+                    for code in (
+                        "429",
+                        "500",
+                        "502",
+                        "503",
+                        "504",
+                        "resource_exhausted",
+                        "unavailable",
+                        "deadlineexceeded",
+                        "timeout",
+                        "temporarily",
+                        "overloaded",
+                    )
+                )
+
+                if not transient:
+                    raise RuntimeError(
+                        f"Non-retryable Gemini error: {error}"
+                    ) from error
+
+                if index == 0:
+                    print(
+                        f"[LLM] Switching to fallback: "
+                        f"{self.fallback_model}"
+                    )
+
+        raise RuntimeError(
+            "Both Gemini models failed. "
+            f"Last error: {last_error}"
+        ) from last_error

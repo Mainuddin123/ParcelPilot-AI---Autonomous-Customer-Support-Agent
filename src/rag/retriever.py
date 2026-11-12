@@ -1,6 +1,7 @@
 
 import re
 import threading
+import heapq
 
 from rank_bm25 import BM25Okapi
 
@@ -10,7 +11,7 @@ from src.tracing import traced
 
 
 class Retriever:
-    """Hybrid ChromaDB + BM25 retrieval with RRF and optional reranking."""
+    """Hybrid ChromaDB + BM25 retrieval with RRF and reranking."""
 
     EXCLUDED = {
         "deprecated",
@@ -50,7 +51,6 @@ class Retriever:
         self.enable_reranking = enable_reranking
         self._reranker_lock = threading.Lock()
 
-        # BM25 uses the same persisted document chunks as ChromaDB.
         self._chunks = list(self.vector_store.chunks)
 
         tokenized = [
@@ -65,7 +65,7 @@ class Retriever:
         return re.findall(r"[a-z0-9]+", str(text).lower())
 
     def _allowed(self, chunk, account_id):
-        """Apply document lifecycle and customer-account filtering."""
+        """Apply document lifecycle and account-level filtering."""
 
         source_type = str(
             chunk.get("source_type", "")
@@ -88,6 +88,8 @@ class Retriever:
 
     @traced(name="parcelpilot.bm25_search")
     def _bm25_search(self, query, account_id):
+        """Retrieve top BM25 candidates without sorting every score."""
+
         if self.bm25 is None or not query.strip():
             return []
 
@@ -95,15 +97,15 @@ class Retriever:
             self._tokenize(query)
         )
 
-        indices = sorted(
+        top_indices = heapq.nlargest(
+            self.candidate_k,
             range(len(scores)),
             key=lambda index: float(scores[index]),
-            reverse=True,
         )
 
         results = []
 
-        for index in indices:
+        for index in top_indices:
             chunk = self._chunks[index]
 
             if not self._allowed(chunk, account_id):
@@ -111,11 +113,7 @@ class Retriever:
 
             item = dict(chunk)
             item["bm25_score"] = float(scores[index])
-
             results.append(item)
-
-            if len(results) >= self.candidate_k:
-                break
 
         return results
 
@@ -128,21 +126,20 @@ class Retriever:
         if not query.strip() or top_k <= 0:
             return []
 
-        # 1. Dense retrieval through ChromaDB.
+        # 1. Dense retrieval.
         dense = self.vector_store.search(
             query=query,
             top_k=self.candidate_k,
             account_id=account_id,
         )
 
-        # Defense-in-depth filtering.
         dense = [
             document
             for document in dense
             if self._allowed(document, account_id)
         ]
 
-        # 2. Sparse retrieval through BM25.
+        # 2. BM25 retrieval.
         lexical = self._bm25_search(
             query,
             account_id,
@@ -152,7 +149,6 @@ class Retriever:
         fused = {}
 
         for ranking in (dense, lexical):
-
             for rank, document in enumerate(ranking, start=1):
 
                 key = (
@@ -171,7 +167,7 @@ class Retriever:
 
         candidates = list(fused.values())
 
-        # 4. Apply source authority priority.
+        # 4. Source authority priority.
         for document in candidates:
 
             priority = self.SOURCE_PRIORITY.get(
@@ -186,7 +182,7 @@ class Retriever:
             reverse=True,
         )
 
-        # 5. Initialize Cross-Encoder lazily.
+        # 5. Lazy Cross-Encoder initialization.
         if self.enable_reranking and self.reranker is None:
 
             with self._reranker_lock:
@@ -224,7 +220,7 @@ class Retriever:
                 self.reranker = None
                 self.enable_reranking = False
 
-        # 7. Safe fallback.
+        # 7. RRF fallback.
         return candidates[:top_k]
 
     @traced(name="parcelpilot.context_formatting")
